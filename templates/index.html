@@ -11,6 +11,10 @@
     <div class="container mt-5">
         <h1 class="text-center mb-4">Orange QoD API Tester</h1>
 
+        <div id="tokenStatusBox" class="alert alert-info mb-4">
+          Checking token status...
+        </div>
+
         {% if not api_token_configured %}
         <div class="alert alert-warning mb-4">
             <h4 class="alert-heading">⚠️ API Token Not Configured</h4>
@@ -48,7 +52,29 @@
             dropdown.innerHTML = '<option>No profiles found</option>';
           }
         }
-        window.onload = loadQosProfiles;
+
+        async function checkTokenStatus() {
+          const box = document.getElementById('tokenStatusBox');
+          try {
+            const response = await fetch('/token/status');
+            const data = await response.json();
+            if (data.status === "granted") {
+              box.className = "alert alert-success mb-4";
+              box.textContent = data.message;
+            } else {
+              box.className = "alert alert-danger mb-4";
+              box.textContent = "Token error: " + data.message;
+            }
+          } catch (e) {
+            box.className = "alert alert-danger mb-4";
+            box.textContent = "Could not check token status.";
+          }
+        }
+
+        window.onload = function() {
+          loadQosProfiles();
+          checkTokenStatus();
+        };
         </script>
         <!-- End QoS Profiles Dropdown Section -->
 
