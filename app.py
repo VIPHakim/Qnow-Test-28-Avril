@@ -229,6 +229,14 @@ async def get_qos_profiles():
     response, status = await make_api_request("GET", "/qos-profiles")
     return {"status": status, "profiles": response}
 
+@app.get("/token/status")
+async def token_status():
+    try:
+        token = await get_access_token()
+        return {"status": "granted", "message": "Access token is valid and granted."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("HOST", "0.0.0.0")
