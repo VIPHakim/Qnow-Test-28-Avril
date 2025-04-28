@@ -9,6 +9,8 @@ from typing import Optional, List
 from pydantic import BaseModel, HttpUrl, Field, IPvAnyAddress, constr
 from enum import Enum
 import uuid
+import time
+import base64
 
 # Load environment variables
 load_dotenv()
@@ -19,28 +21,40 @@ app = FastAPI(title="Orange QoD API Tester")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# API Configuration
-API_TOKEN = os.getenv("API_TOKEN", "")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api-qod.orange.com/v1")
+# OAuth2 Credentials
+CLIENT_ID = "f1yQkufLpcgSC0YZHV9tpNBxeSAjFNPd"
+CLIENT_SECRET = "KpeLOK4ZmDMh8Wyv"
+OAUTH_URL = "https://api.orange.com/oauth/v3/token"
 
-# Middleware to check API token
-@app.middleware("http")
-async def check_api_token(request: Request, call_next):
-    if request.url.path.startswith("/qos"):  # Only check for QoS API endpoints
-        if not API_TOKEN:
-            return JSONResponse(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                content={
-                    "error": "API Token not configured",
-                    "detail": "Please set up your API token in the .env file using the API_TOKEN environment variable",
-                    "setup_instructions": [
-                        "1. Create a .env file in the root directory if it doesn't exist",
-                        "2. Add your API token to the .env file like this: API_TOKEN=your_token_here",
-                        "3. Restart the application"
-                    ]
-                }
-            )
-    return await call_next(request)
+# Token cache
+global_access_token = None
+global_token_expiry = 0
+
+async def get_access_token():
+    global global_access_token, global_token_expiry
+    # If token is still valid, return it
+    if global_access_token and time.time() < global_token_expiry - 60:
+        return global_access_token
+
+    # Otherwise, request a new token
+    async with aiohttp.ClientSession() as session:
+        basic_auth = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {basic_auth}",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json"
+        }
+        data = {
+            "grant_type": "client_credentials"
+        }
+        async with session.post(OAUTH_URL, headers=headers, data=data) as resp:
+            if resp.status != 200:
+                error = await resp.text()
+                raise HTTPException(status_code=503, detail=f"Failed to get access token: {error}")
+            token_data = await resp.json()
+            global_access_token = token_data["access_token"]
+            global_token_expiry = time.time() + int(token_data["expires_in"])
+            return global_access_token
 
 # Pydantic models for request validation
 class Port(BaseModel):
@@ -130,25 +144,15 @@ class SessionInfo(QoSSessionRequest):
     messages: Optional[List[Message]] = None
 
 async def make_api_request(method: str, endpoint: str, data: dict = None):
-    """Helper function to make API requests"""
-    if not API_TOKEN:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error": "API Token not configured",
-                "detail": "Please configure your API token in the .env file"
-            }
-        )
-
+    token = await get_access_token()
     headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    
     print(f"Making {method} request to {endpoint}")  # Debug print
     print(f"Headers: {headers}")  # Debug print
     print(f"Data: {data}")  # Debug print
-    
+
     async with aiohttp.ClientSession() as session:
         url = f"{API_BASE_URL}{endpoint}"
         try:
@@ -179,7 +183,7 @@ async def home(request: Request):
         "index.html",
         {
             "request": request,
-            "api_token_configured": bool(API_TOKEN)
+            "api_token_configured": bool(API_BASE_URL)
         }
     )
 
@@ -214,6 +218,14 @@ async def delete_session(session_id: str):
     """Delete a QoS session"""
     response, status = await make_api_request("DELETE", f"/qos/session/{session_id}")
     return {"status": status, "response": response}
+
+@app.get("/qos/profiles")
+async def get_qos_profiles():
+    """
+    Get all QoS profiles managed by the Orange QoS server.
+    """
+    response, status = await make_api_request("GET", "/qos-profiles")
+    return {"status": status, "profiles": response}
 
 if __name__ == "__main__":
     import uvicorn
