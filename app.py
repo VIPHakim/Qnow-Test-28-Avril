@@ -23,7 +23,7 @@ templates = Jinja2Templates(directory="templates")
 
 # OAuth2 Credentials
 CLIENT_ID = "f1yQkufLpcgSC0YZHV9tpNBxeSAjFNPd"
-CLIENT_SECRET = "KpeLOK4ZmDMh8Wyv"
+CLIENT_SECRET = "UJXn5yFO3GXr7MocZ5zPlfxZC2JpIqg3g0fIlgOPb1g9"
 OAUTH_URL = "https://api.orange.com/oauth/v3/token"
 
 # Token cache
