@@ -82,8 +82,12 @@
                                 <input type="text" class="form-control" id="network_access_identifier" name="network_access_identifier">
                             </div>
                             <div class="mb-3">
-                                <label for="device_ipv4_address" class="form-label">IPv4 Public Address</label>
-                                <input type="text" class="form-control" id="device_ipv4_address" name="device_ipv4_address">
+                                <label for="device_ipv4_public_address" class="form-label">IPv4 Public Address</label>
+                                <input type="text" class="form-control" id="device_ipv4_public_address" name="device_ipv4_public_address" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="device_ipv4_private_address" class="form-label">IPv4 Private Address</label>
+                                <input type="text" class="form-control" id="device_ipv4_private_address" name="device_ipv4_private_address" required>
                             </div>
                             <div class="mb-3">
                                 <label for="device_ipv4_port" class="form-label">IPv4 Public Port</label>
@@ -214,5 +218,13 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+    <script>
+    document.getElementById('device_ipv4_public_address').addEventListener('input', function() {
+        document.getElementById('device_ipv4_private_address').value = this.value;
+    });
+    document.getElementById('device_ipv4_private_address').addEventListener('input', function() {
+        document.getElementById('device_ipv4_public_address').value = this.value;
+    });
+    </script>
 </body>
 </html> 
