@@ -25,6 +25,33 @@
         </div>
         {% endif %}
         
+        <!-- QoS Profiles Dropdown Section -->
+        <h2>Available QoS Profiles</h2>
+        <select id="qosProfilesDropdown">
+          <option>Loading...</option>
+        </select>
+
+        <script>
+        async function loadQosProfiles() {
+          const response = await fetch('/qos/profiles');
+          const data = await response.json();
+          const dropdown = document.getElementById('qosProfilesDropdown');
+          dropdown.innerHTML = '';
+          if (data.profiles && Array.isArray(data.profiles)) {
+            data.profiles.forEach(profile => {
+              const option = document.createElement('option');
+              option.value = profile.name;
+              option.text = profile.name + (profile.description ? ' - ' + profile.description : '');
+              dropdown.appendChild(option);
+            });
+          } else {
+            dropdown.innerHTML = '<option>No profiles found</option>';
+          }
+        }
+        window.onload = loadQosProfiles;
+        </script>
+        <!-- End QoS Profiles Dropdown Section -->
+
         <!-- Create QoS Session -->
         <div class="card mb-4">
             <div class="card-header">
