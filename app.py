@@ -143,8 +143,12 @@ class QoSSessionRequest(BaseModel):
     @validator('qosProfile')
     def validate_qos_profile(cls, v):
         import re
-        if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v):
-            raise ValueError('QoS profile must be a valid UUID in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+        if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v.lower()):
+            raise ValueError(
+                'Invalid QoS Profile format. Please use this exact UUID format:\n'
+                'Example: b55e2cc8-b386-4d90-9f95-b98ba20be050\n'
+                f'You provided: {v}'
+            )
         return v
 
     class Config:
@@ -277,20 +281,8 @@ async def create_qos_session(request: QoSSessionRequest):
     try:
         print("\n=== Processing QoS Session Request ===")
         print(f"Input Request: {request.model_dump_json()}")
-        
-        # Check if qosProfile is in the correct UUID format
-        if not request.qosProfile or not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', request.qosProfile.lower()):
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Invalid QoS Profile format",
-                    "message": "QoS Profile must be a valid UUID in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-                    "example": "b55e2cc8-b386-4d90-9f95-b98ba20be050",
-                    "received": request.qosProfile
-                }
-            )
 
-        # Format the request exactly as in the Orange example
+        # Format the request EXACTLY as in the Orange example
         formatted_request = {
             "duration": request.duration,
             "device": {
@@ -303,14 +295,15 @@ async def create_qos_session(request: QoSSessionRequest):
                 "ipv4Address": request.applicationServer.ipv4Address
             },
             "devicePorts": {
-                "ports": [50984] if not request.devicePorts or not request.devicePorts.ports else request.devicePorts.ports
+                "ports": [50984]  # Always use this exact port
             },
             "applicationServerPorts": {
-                "ports": [10000] if not request.applicationServerPorts or not request.applicationServerPorts.ports else request.applicationServerPorts.ports
+                "ports": [10000]  # Always use this exact port
             },
-            "qosProfile": request.qosProfile
+            "qosProfile": request.qosProfile.lower()  # Ensure lowercase UUID
         }
 
+        # Only add webhook if provided
         if request.webhook and request.webhook.notificationUrl:
             formatted_request["webhook"] = {
                 "notificationUrl": str(request.webhook.notificationUrl)
