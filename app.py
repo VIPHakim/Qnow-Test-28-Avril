@@ -387,18 +387,49 @@ async def get_qos_profiles():
     """Get all available QoS profiles"""
     try:
         response, status = await make_api_request("GET", "/qos-profiles")
-        if status == 200 and isinstance(response, list):
-            # Extract just the profile names for easier reference
-            profile_names = [profile.get("name", "") for profile in response]
-            print(f"\nAvailable QoS Profiles: {profile_names}")
+        print("\n=== QoS Profiles Response ===")
+        print(f"Status: {status}")
+        print(f"Response: {json.dumps(response, indent=2)}")
+
+        if status == 200:
+            # Ensure we have a list of profiles
+            if isinstance(response, list):
+                profiles = []
+                for profile in response:
+                    if isinstance(profile, dict):
+                        # Extract name and id from each profile
+                        name = profile.get('name')
+                        profile_id = profile.get('id')
+                        if name and profile_id:
+                            profiles.append({
+                                'name': name,
+                                'id': profile_id
+                            })
+                
+                print(f"\nProcessed Profiles: {json.dumps(profiles, indent=2)}")
+                return {
+                    "status": status,
+                    "profiles": profiles
+                }
+            else:
+                print(f"Unexpected response format: {response}")
+                return {
+                    "status": 500,
+                    "error": "Invalid response format from QoS API",
+                    "raw_response": response
+                }
+        else:
+            print(f"Error response: {response}")
             return {
                 "status": status,
-                "profiles": profile_names,
-                "message": "Use one of these profile names in your request"
+                "error": "Failed to fetch QoS profiles",
+                "details": response
             }
-        return {"status": status, "response": response}
+            
     except Exception as e:
         print(f"Error fetching QoS profiles: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/token/status")
