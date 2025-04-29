@@ -7,6 +7,68 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>��</text></svg>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="{{ url_for('static', path='/css/style.css') }}" rel="stylesheet">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"], select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #ff7900;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #e66d00;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .success {
+            color: green;
+            margin-top: 10px;
+        }
+        .section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .section-header {
+            background-color: #ff7900;
+            color: white;
+            padding: 10px;
+            margin: -15px -15px 15px -15px;
+            border-radius: 4px 4px 0 0;
+        }
+        #profileList {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-5">
@@ -43,29 +105,19 @@
                         <input type="number" class="form-control" id="duration" name="duration" required min="1" value="86400">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">QoS Profile Selection</label>
-                        <div class="mb-2">
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="profileType" id="predefinedProfile" value="predefined" checked>
-                                <label class="form-check-label" for="predefinedProfile">
-                                    Use Predefined Profile
-                                </label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="profileType" id="customProfile" value="custom">
-                                <label class="form-check-label" for="customProfile">
-                                    Use Custom Profile
-                                </label>
-                            </div>
+                        <label>QoS Profile Selection</label>
+                        <div>
+                            <input type="radio" id="predefinedProfile" name="profileType" value="predefined" checked>
+                            <label for="predefinedProfile">Use Predefined Profile</label>
                         </div>
-                        <div id="predefinedProfileSection">
-                            <select class="form-control" id="qos_profile_predefined" name="qos_profile">
-                                <option value="">Loading profiles...</option>
-                            </select>
+                        <div>
+                            <input type="radio" id="customProfile" name="profileType" value="custom">
+                            <label for="customProfile">Use Custom Profile</label>
                         </div>
-                        <div id="customProfileSection" style="display: none;">
-                            <input type="text" class="form-control" id="qos_profile_custom" name="qos_profile_custom" placeholder="Enter custom profile name">
-                        </div>
+                        <select id="predefinedProfileSelect" style="display: none;">
+                            <option value="">Loading profiles...</option>
+                        </select>
+                        <input type="text" id="customProfileInput" style="display: none;" placeholder="Enter custom profile">
                     </div>
 
                     <!-- Device Information -->
@@ -229,57 +281,40 @@
     document.getElementById('createSessionForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         
+        // Get and validate QoS profile
         const profileType = document.querySelector('input[name="profileType"]:checked').value;
         const qosProfile = profileType === 'predefined' 
-            ? document.getElementById('qos_profile_predefined').value 
-            : document.getElementById('qos_profile_custom').value;
+            ? document.getElementById('predefinedProfileSelect').value 
+            : document.getElementById('customProfileInput').value;
+
+        // Validate QoS profile is selected
+        if (!qosProfile) {
+            alert('Please select a QoS profile');
+            document.getElementById('responseDisplay').textContent = 'Error: QoS profile must be selected';
+            return;
+        }
 
         const formData = {
             duration: parseInt(document.getElementById('duration').value),
-            qosProfile: qosProfile,
             device: {
                 ipv4Address: {
                     publicAddress: document.getElementById('device_ipv4_public_address').value,
-                    privateAddress: document.getElementById('device_ipv4_private_address').value,
-                    publicPort: parseInt(document.getElementById('device_ipv4_port').value) || undefined
+                    privateAddress: document.getElementById('device_ipv4_private_address').value
                 }
             },
             applicationServer: {
-                ipv4Address: document.getElementById('server_ipv4_address').value
-            }
+                ipv4Address: document.getElementById('server_ipv4_address').value || "172.20.120.84"
+            },
+            devicePorts: {
+                ports: [50984]  // Always use this port
+            },
+            applicationServerPorts: {
+                ports: [10000]  // Always use this port
+            },
+            qosProfile: qosProfile
         };
 
-        // Add device ports if specified
-        const devicePorts = document.getElementById('device_ports').value;
-        if (devicePorts) {
-            formData.devicePorts = {
-                ports: devicePorts.split(',').map(port => parseInt(port.trim())).filter(port => !isNaN(port))
-            };
-        }
-
-        // Add server ports if specified
-        const serverPorts = document.getElementById('server_ports').value;
-        if (serverPorts) {
-            formData.applicationServerPorts = {
-                ports: serverPorts.split(',').map(port => parseInt(port.trim())).filter(port => !isNaN(port))
-            };
-        }
-
-        // Add webhook if URL is specified
-        const notificationUrl = document.getElementById('notification_url').value;
-        if (notificationUrl) {
-            try {
-                // Validate URL
-                new URL(notificationUrl);
-                formData.webhook = {
-                    notificationUrl: notificationUrl,
-                    notificationAuthToken: document.getElementById('notification_auth_token').value || undefined
-                };
-            } catch (error) {
-                alert('Invalid notification URL format');
-                return;
-            }
-        }
+        console.log('Sending request with data:', formData);
 
         try {
             const response = await fetch('/qos/request', {
@@ -296,7 +331,7 @@
             if (response.ok) {
                 alert('QoS session created successfully!');
             } else {
-                alert('Error creating QoS session: ' + (data.detail || JSON.stringify(data)));
+                alert('Error creating QoS session: ' + (data.detail?.message || JSON.stringify(data)));
             }
         } catch (error) {
             console.error('Error:', error);
@@ -309,42 +344,60 @@
         try {
             const response = await fetch('/qos/profiles');
             const data = await response.json();
-            const dropdown = document.getElementById('qos_profile_predefined');
+            const dropdown = document.getElementById('predefinedProfileSelect');
             dropdown.innerHTML = '';
             
-            if (data.profiles && Array.isArray(data.profiles)) {
+            if (data.status === 200 && Array.isArray(data.profiles)) {
+                // Add default option
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.text = 'Select a profile';
+                dropdown.appendChild(defaultOption);
+                
+                // Add profile options
                 data.profiles.forEach(profile => {
                     const option = document.createElement('option');
-                    option.value = profile.name;
-                    option.text = profile.name + (profile.description ? ' - ' + profile.description : '');
+                    option.value = profile;
+                    option.text = profile;
                     dropdown.appendChild(option);
                 });
+                
+                // Show the dropdown
+                dropdown.style.display = 'block';
             } else {
                 dropdown.innerHTML = '<option value="">No profiles available</option>';
             }
         } catch (error) {
             console.error('Error loading profiles:', error);
-            document.getElementById('qos_profile_predefined').innerHTML = '<option value="">Error loading profiles</option>';
+            document.getElementById('predefinedProfileSelect').innerHTML = '<option value="">Error loading profiles</option>';
         }
     }
 
     // Add radio button change handler
     document.querySelectorAll('input[name="profileType"]').forEach(radio => {
         radio.addEventListener('change', function() {
-            const predefinedSection = document.getElementById('predefinedProfileSection');
-            const customSection = document.getElementById('customProfileSection');
+            const predefinedSelect = document.getElementById('predefinedProfileSelect');
+            const customInput = document.getElementById('customProfileInput');
+            
             if (this.value === 'predefined') {
-                predefinedSection.style.display = 'block';
-                customSection.style.display = 'none';
-                document.getElementById('qos_profile_predefined').setAttribute('required', 'required');
-                document.getElementById('qos_profile_custom').removeAttribute('required');
+                predefinedSelect.style.display = 'block';
+                customInput.style.display = 'none';
             } else {
-                predefinedSection.style.display = 'none';
-                customSection.style.display = 'block';
-                document.getElementById('qos_profile_predefined').removeAttribute('required');
-                document.getElementById('qos_profile_custom').setAttribute('required', 'required');
+                predefinedSelect.style.display = 'none';
+                customInput.style.display = 'block';
             }
         });
+    });
+
+    // Initialize profile selection display
+    document.addEventListener('DOMContentLoaded', function() {
+        const predefinedSelect = document.getElementById('predefinedProfileSelect');
+        predefinedSelect.style.display = 'block';
+        
+        // Set default values for required fields
+        document.getElementById('device_ipv4_public_address').value = '172.20.120.107';
+        document.getElementById('device_ipv4_private_address').value = '172.20.120.107';
+        document.getElementById('server_ipv4_address').value = '172.20.120.84';
     });
 
     async function checkTokenStatus() {

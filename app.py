@@ -272,12 +272,19 @@ async def create_qos_session(request: QoSSessionRequest):
         if profiles_status != 200:
             raise HTTPException(status_code=400, detail="Failed to fetch QoS profiles")
 
+        if not isinstance(profiles_response, list):
+            print(f"Unexpected profiles response: {profiles_response}")
+            raise HTTPException(status_code=500, detail="Invalid profiles response from API")
+
         # Create a mapping of profile names to their data
-        profile_map = {
-            profile.get("name", "").lower(): profile
-            for profile in profiles_response
-            if isinstance(profile, dict) and "name" in profile
-        }
+        profile_map = {}
+        for profile in profiles_response:
+            if isinstance(profile, dict):
+                name = profile.get("name", "").lower()
+                if name:
+                    profile_map[name] = profile
+
+        print(f"\nAvailable profiles: {list(profile_map.keys())}")
 
         # Convert requested profile to lowercase for case-insensitive matching
         requested_profile = request.qosProfile.lower()
@@ -293,11 +300,19 @@ async def create_qos_session(request: QoSSessionRequest):
                 }
             )
 
-        # Get the profile data
+        # Get the profile data and ensure we have an ID
         profile_data = profile_map[requested_profile]
         profile_id = profile_data.get("id")
+        
+        if not profile_id:
+            print(f"Profile data missing ID: {profile_data}")
+            raise HTTPException(
+                status_code=500,
+                detail="Selected profile is missing an ID"
+            )
 
-        print(f"\nMatched QoS Profile: {request.qosProfile} -> {profile_data}")
+        print(f"\nMatched QoS Profile: {request.qosProfile} -> ID: {profile_id}")
+        print(f"Full profile data: {json.dumps(profile_data, indent=2)}")
 
         # Format the request EXACTLY as in the Orange example
         formatted_request = {
@@ -312,12 +327,12 @@ async def create_qos_session(request: QoSSessionRequest):
                 "ipv4Address": request.applicationServer.ipv4Address
             },
             "devicePorts": {
-                "ports": [50984]  # Always use this exact port
+                "ports": [50984]
             },
             "applicationServerPorts": {
-                "ports": [10000]  # Always use this exact port
+                "ports": [10000]
             },
-            "qosProfile": profile_id
+            "qosProfile": str(profile_id)  # Ensure it's a string
         }
 
         # Only add webhook if provided
