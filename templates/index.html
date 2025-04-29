@@ -277,18 +277,57 @@
         document.getElementById('device_ipv4_public_address').value = this.value;
     });
 
+    async function loadQosProfiles() {
+        try {
+            const response = await fetch('/qos/profiles');
+            const data = await response.json();
+            const dropdown = document.getElementById('predefinedProfileSelect');
+            dropdown.innerHTML = '';
+            
+            if (data.status === 200 && Array.isArray(data.profiles)) {
+                // Add default option
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.text = 'Select a profile';
+                dropdown.appendChild(defaultOption);
+                
+                // Store profiles data globally
+                window.profilesData = {};
+                
+                // Add profile options
+                data.profiles.forEach(profile => {
+                    if (profile && profile.name && profile.id) {
+                        const option = document.createElement('option');
+                        option.value = profile.id;  // Use the profile ID as the value
+                        option.text = profile.name; // Show the profile name to the user
+                        dropdown.appendChild(option);
+                        
+                        // Store the full profile data
+                        window.profilesData[profile.name] = profile;
+                    }
+                });
+                
+                // Show the dropdown
+                dropdown.style.display = 'block';
+            } else {
+                dropdown.innerHTML = '<option value="">No profiles available</option>';
+            }
+        } catch (error) {
+            console.error('Error loading profiles:', error);
+            document.getElementById('predefinedProfileSelect').innerHTML = '<option value="">Error loading profiles</option>';
+        }
+    }
+
     // Add form submission handler
     document.getElementById('createSessionForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         
         // Get and validate QoS profile
         const profileType = document.querySelector('input[name="profileType"]:checked').value;
-        const qosProfile = profileType === 'predefined' 
-            ? document.getElementById('predefinedProfileSelect').value 
-            : document.getElementById('customProfileInput').value;
+        const selectedProfile = document.getElementById('predefinedProfileSelect').value;
 
         // Validate QoS profile is selected
-        if (!qosProfile) {
+        if (!selectedProfile) {
             alert('Please select a QoS profile');
             document.getElementById('responseDisplay').textContent = 'Error: QoS profile must be selected';
             return;
@@ -311,7 +350,7 @@
             applicationServerPorts: {
                 ports: [10000]  // Always use this port
             },
-            qosProfile: qosProfile
+            qosProfile: selectedProfile  // This is now the profile ID
         };
 
         console.log('Sending request with data:', formData);
@@ -339,39 +378,6 @@
             alert('Error creating QoS session: ' + error.message);
         }
     });
-
-    async function loadQosProfiles() {
-        try {
-            const response = await fetch('/qos/profiles');
-            const data = await response.json();
-            const dropdown = document.getElementById('predefinedProfileSelect');
-            dropdown.innerHTML = '';
-            
-            if (data.status === 200 && Array.isArray(data.profiles)) {
-                // Add default option
-                const defaultOption = document.createElement('option');
-                defaultOption.value = '';
-                defaultOption.text = 'Select a profile';
-                dropdown.appendChild(defaultOption);
-                
-                // Add profile options
-                data.profiles.forEach(profile => {
-                    const option = document.createElement('option');
-                    option.value = profile;
-                    option.text = profile;
-                    dropdown.appendChild(option);
-                });
-                
-                // Show the dropdown
-                dropdown.style.display = 'block';
-            } else {
-                dropdown.innerHTML = '<option value="">No profiles available</option>';
-            }
-        } catch (error) {
-            console.error('Error loading profiles:', error);
-            document.getElementById('predefinedProfileSelect').innerHTML = '<option value="">Error loading profiles</option>';
-        }
-    }
 
     // Add radio button change handler
     document.querySelectorAll('input[name="profileType"]').forEach(radio => {
