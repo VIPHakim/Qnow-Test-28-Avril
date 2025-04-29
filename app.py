@@ -149,7 +149,8 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        "Accept": "application/json"  # Add explicit Accept header
+        "Accept": "application/json",
+        "Cache-Control": "no-cache"
     }
     print(f"\nMaking {method} request to {endpoint}")  # Debug print
     print(f"Headers: {headers}")  # Debug print
@@ -201,36 +202,31 @@ async def home(request: Request):
 async def create_qos_session(request: QoSSessionRequest):
     """Create a new QoS session"""
     try:
-        # Convert the request to a dict and handle HttpUrl serialization
-        request_data = request.dict(exclude_none=True)
-        if request_data.get('webhook') and request_data['webhook'].get('notificationUrl'):
-            request_data['webhook']['notificationUrl'] = str(request_data['webhook']['notificationUrl'])
-
-        # Format the request according to API requirements
+        # Format the request to match the exact structure required by the API
         formatted_request = {
-            "duration": request_data["duration"],
+            "duration": request.duration,
             "device": {
                 "ipv4Address": {
-                    "publicAddress": request_data["device"]["ipv4Address"]["publicAddress"],
-                    "privateAddress": request_data["device"]["ipv4Address"].get("privateAddress"),
-                    "publicPort": request_data["device"]["ipv4Address"].get("publicPort")
+                    "publicAddress": request.device.ipv4Address.publicAddress,
+                    "privateAddress": request.device.ipv4Address.privateAddress
                 }
             },
             "applicationServer": {
-                "ipv4Address": request_data["applicationServer"]["ipv4Address"]
+                "ipv4Address": request.applicationServer.ipv4Address
             },
-            "qosProfile": request_data["qosProfile"]
+            "devicePorts": {
+                "ports": request.devicePorts.ports if request.devicePorts else None
+            } if request.devicePorts else None,
+            "applicationServerPorts": {
+                "ports": request.applicationServerPorts.ports if request.applicationServerPorts else None
+            } if request.applicationServerPorts else None,
+            "qosProfile": request.qosProfile,
+            "webhook": {
+                "notificationUrl": str(request.webhook.notificationUrl) if request.webhook else None
+            } if request.webhook else None
         }
 
-        # Add optional fields only if they exist
-        if "devicePorts" in request_data:
-            formatted_request["devicePorts"] = request_data["devicePorts"]
-        if "applicationServerPorts" in request_data:
-            formatted_request["applicationServerPorts"] = request_data["applicationServerPorts"]
-        if "webhook" in request_data:
-            formatted_request["webhook"] = request_data["webhook"]
-
-        # Remove any None values from nested dictionaries
+        # Remove None values and empty dictionaries
         formatted_request = {k: v for k, v in formatted_request.items() if v is not None}
         if "device" in formatted_request and "ipv4Address" in formatted_request["device"]:
             formatted_request["device"]["ipv4Address"] = {
