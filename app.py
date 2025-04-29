@@ -12,6 +12,7 @@ import uuid
 import time
 import base64
 import json
+import re
 
 # Load environment variables
 load_dotenv()
@@ -277,11 +278,18 @@ async def create_qos_session(request: QoSSessionRequest):
         print("\n=== Processing QoS Session Request ===")
         print(f"Input Request: {request.model_dump_json()}")
         
-        # First, verify the QoS profile exists
-        qos_profiles_response, qos_status = await make_api_request("GET", "/qos-profiles")
-        if qos_status != 200:
-            raise HTTPException(status_code=400, detail="Failed to verify QoS profiles")
-        
+        # Check if qosProfile is in the correct UUID format
+        if not request.qosProfile or not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', request.qosProfile.lower()):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Invalid QoS Profile format",
+                    "message": "QoS Profile must be a valid UUID in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+                    "example": "b55e2cc8-b386-4d90-9f95-b98ba20be050",
+                    "received": request.qosProfile
+                }
+            )
+
         # Format the request exactly as in the Orange example
         formatted_request = {
             "duration": request.duration,
