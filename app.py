@@ -118,8 +118,40 @@ class QoSSessionRequest(BaseModel):
     applicationServer: ApplicationServer = Field(..., description="Application server information")
     devicePorts: Optional[PortsSpec] = Field(None, description="Device port specifications")
     applicationServerPorts: Optional[PortsSpec] = Field(None, description="Application server port specifications")
-    qosProfile: str = Field(..., min_length=1, max_length=256, description="QoS profile identifier")
+    qosProfile: str = Field(
+        ..., 
+        min_length=36, 
+        max_length=36, 
+        description="QoS profile identifier in UUID format",
+        example="b55e2cc8-b386-4d90-9f95-b98ba20be050"
+    )
     webhook: Optional[Webhook] = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "duration": 600,
+                "device": {
+                    "ipv4Address": {
+                        "publicAddress": "172.20.120.105",
+                        "privateAddress": "172.20.120.105"
+                    }
+                },
+                "applicationServer": {
+                    "ipv4Address": "172.20.120.84"
+                },
+                "devicePorts": {
+                    "ports": [50984]
+                },
+                "applicationServerPorts": {
+                    "ports": [10000]
+                },
+                "qosProfile": "b55e2cc8-b386-4d90-9f95-b98ba20be050",
+                "webhook": {
+                    "notificationUrl": "https://webhook.site/.....-b450-cfffc51b4c13"
+                }
+            }
+        }
 
 class QosStatus(str, Enum):
     """QoS session status"""
