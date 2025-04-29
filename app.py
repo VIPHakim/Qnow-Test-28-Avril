@@ -6,7 +6,7 @@ import os
 from dotenv import load_dotenv
 import aiohttp
 from typing import Optional, List
-from pydantic import BaseModel, HttpUrl, Field, IPvAnyAddress, constr
+from pydantic import BaseModel, HttpUrl, Field, IPvAnyAddress, constr, validator
 from enum import Enum
 import uuid
 import time
@@ -98,8 +98,18 @@ class Device(BaseModel):
 
 class ApplicationServer(BaseModel):
     """Application server identification"""
-    ipv4Address: str = Field(..., example="192.168.0.1", description="IPv4 address of the application server")
+    ipv4Address: str = Field(
+        ..., 
+        example="172.20.120.84",
+        description="IPv4 address of the application server"
+    )
     ipv6Address: Optional[str] = Field(None, example="2001:db8:85a3:8d3:1319:8a2e:370:7344", description="IPv6 address of the application server")
+
+    @validator('ipv4Address')
+    def validate_ipv4(cls, v):
+        if '/' in v:  # Reject CIDR notation
+            raise ValueError('CIDR notation is not allowed. Please provide a specific IPv4 address.')
+        return v
 
 class Webhook(BaseModel):
     """Webhook configuration for notifications"""
@@ -183,7 +193,8 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Cache-Control": "no-cache"
+            "Cache-Control": "no-cache",
+            "X-OAPI-Request-Id": str(uuid.uuid4())  # Add request ID for tracking
         }
         print(f"\n=== API Request Details ===")
         print(f"Method: {method}")
@@ -211,7 +222,18 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
                     if response_text:
                         response_json = json.loads(response_text)
                         print(f"Parsed Response JSON: {json.dumps(response_json, indent=2)}")
+                        
+                        # Check for specific error patterns
                         if response.status >= 400:
+                            error_detail = response_json.get('details', '')
+                            if 'Error id' in error_detail:
+                                print(f"\n=== Error Analysis ===")
+                                print(f"Error ID found: {error_detail}")
+                                print("Possible issues:")
+                                print("1. Token validation")
+                                print("2. Request format")
+                                print("3. Server-side validation")
+                                print("4. Resource availability")
                             return {"error": response_json}, response.status
                         return response_json, response.status
                     return {}, response.status
@@ -246,7 +268,20 @@ async def create_qos_session(request: QoSSessionRequest):
         print("\n=== Processing QoS Session Request ===")
         print(f"Input Request: {request.model_dump_json()}")
         
-        # Format the request to match the exact structure required by the API
+        # First, verify the QoS profile exists
+        qos_profiles_response, qos_status = await make_api_request("GET", "/qos-profiles")
+        if qos_status != 200:
+            raise HTTPException(status_code=400, detail="Failed to verify QoS profiles")
+        
+        # Check if the requested profile exists
+        available_profiles = [profile["name"] for profile in qos_profiles_response]
+        if request.qosProfile not in available_profiles:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid QoS profile. Available profiles: {', '.join(available_profiles)}"
+            )
+
+        # Format the request with required ports
         formatted_request = {
             "duration": request.duration,
             "device": {
@@ -258,23 +293,22 @@ async def create_qos_session(request: QoSSessionRequest):
             "applicationServer": {
                 "ipv4Address": request.applicationServer.ipv4Address
             },
+            "devicePorts": {
+                "ports": request.devicePorts.ports if request.devicePorts and request.devicePorts.ports else [50984]  # Default port if not specified
+            },
+            "applicationServerPorts": {
+                "ports": request.applicationServerPorts.ports if request.applicationServerPorts and request.applicationServerPorts.ports else [10000]  # Default port if not specified
+            },
             "qosProfile": request.qosProfile
         }
 
-        # Add optional fields only if they exist
-        if request.devicePorts and request.devicePorts.ports:
-            formatted_request["devicePorts"] = {"ports": request.devicePorts.ports}
-        
-        if request.applicationServerPorts and request.applicationServerPorts.ports:
-            formatted_request["applicationServerPorts"] = {"ports": request.applicationServerPorts.ports}
-        
+        # Add webhook if provided
         if request.webhook and request.webhook.notificationUrl:
             formatted_request["webhook"] = {
                 "notificationUrl": str(request.webhook.notificationUrl)
             }
 
-        # Remove any None values
-        formatted_request = {k: v for k, v in formatted_request.items() if v is not None}
+        # Remove any None values from nested dictionaries
         if "device" in formatted_request and "ipv4Address" in formatted_request["device"]:
             formatted_request["device"]["ipv4Address"] = {
                 k: v for k, v in formatted_request["device"]["ipv4Address"].items() if v is not None
