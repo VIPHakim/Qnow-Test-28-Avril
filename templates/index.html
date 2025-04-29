@@ -43,10 +43,29 @@
                         <input type="number" class="form-control" id="duration" name="duration" required min="1" value="86400">
                     </div>
                     <div class="mb-3">
-                        <label for="qos_profile" class="form-label">QoS Profile</label>
-                        <select class="form-control" id="qos_profile" name="qos_profile" required>
-                            <option value="">Loading profiles...</option>
-                        </select>
+                        <label class="form-label">QoS Profile Selection</label>
+                        <div class="mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="profileType" id="predefinedProfile" value="predefined" checked>
+                                <label class="form-check-label" for="predefinedProfile">
+                                    Use Predefined Profile
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="profileType" id="customProfile" value="custom">
+                                <label class="form-check-label" for="customProfile">
+                                    Use Custom Profile
+                                </label>
+                            </div>
+                        </div>
+                        <div id="predefinedProfileSection">
+                            <select class="form-control" id="qos_profile_predefined" name="qos_profile">
+                                <option value="">Loading profiles...</option>
+                            </select>
+                        </div>
+                        <div id="customProfileSection" style="display: none;">
+                            <input type="text" class="form-control" id="qos_profile_custom" name="qos_profile_custom" placeholder="Enter custom profile name">
+                        </div>
                     </div>
 
                     <!-- Device Information -->
@@ -210,9 +229,14 @@
     document.getElementById('createSessionForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         
+        const profileType = document.querySelector('input[name="profileType"]:checked').value;
+        const qosProfile = profileType === 'predefined' 
+            ? document.getElementById('qos_profile_predefined').value 
+            : document.getElementById('qos_profile_custom').value;
+
         const formData = {
             duration: parseInt(document.getElementById('duration').value),
-            qosProfile: document.getElementById('qos_profile').value,
+            qosProfile: qosProfile,
             device: {
                 ipv4Address: {
                     publicAddress: document.getElementById('device_ipv4_public_address').value,
@@ -285,7 +309,7 @@
         try {
             const response = await fetch('/qos/profiles');
             const data = await response.json();
-            const dropdown = document.getElementById('qos_profile');
+            const dropdown = document.getElementById('qos_profile_predefined');
             dropdown.innerHTML = '';
             
             if (data.profiles && Array.isArray(data.profiles)) {
@@ -297,13 +321,31 @@
                 });
             } else {
                 dropdown.innerHTML = '<option value="">No profiles available</option>';
-                console.error('Invalid profiles data:', data);
             }
         } catch (error) {
             console.error('Error loading profiles:', error);
-            document.getElementById('qos_profile').innerHTML = '<option value="">Error loading profiles</option>';
+            document.getElementById('qos_profile_predefined').innerHTML = '<option value="">Error loading profiles</option>';
         }
     }
+
+    // Add radio button change handler
+    document.querySelectorAll('input[name="profileType"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const predefinedSection = document.getElementById('predefinedProfileSection');
+            const customSection = document.getElementById('customProfileSection');
+            if (this.value === 'predefined') {
+                predefinedSection.style.display = 'block';
+                customSection.style.display = 'none';
+                document.getElementById('qos_profile_predefined').setAttribute('required', 'required');
+                document.getElementById('qos_profile_custom').removeAttribute('required');
+            } else {
+                predefinedSection.style.display = 'none';
+                customSection.style.display = 'block';
+                document.getElementById('qos_profile_predefined').removeAttribute('required');
+                document.getElementById('qos_profile_custom').setAttribute('required', 'required');
+            }
+        });
+    });
 
     async function checkTokenStatus() {
       const box = document.getElementById('tokenStatusBox');

@@ -11,6 +11,7 @@ from enum import Enum
 import uuid
 import time
 import base64
+import json
 
 # Load environment variables
 load_dotenv()
@@ -149,28 +150,37 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
     token = await get_access_token()
     headers = {
         "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json"  # Add explicit Accept header
     }
-    print(f"Making {method} request to {endpoint}")  # Debug print
+    print(f"\nMaking {method} request to {endpoint}")  # Debug print
     print(f"Headers: {headers}")  # Debug print
-    print(f"Data: {data}")  # Debug print
+    print(f"Request Data: {json.dumps(data, indent=2)}")  # Pretty print the request data
 
     async with aiohttp.ClientSession() as session:
         url = f"{API_BASE_URL}{endpoint}"
+        print(f"Full URL: {url}")  # Debug print
         try:
             if method == "GET":
                 async with session.get(url, headers=headers) as response:
-                    return await response.json(), response.status
+                    response_text = await response.text()
+                    print(f"Response Status: {response.status}")  # Debug print
+                    print(f"Response Text: {response_text}")  # Debug print
+                    return await response.json() if response_text else {}, response.status
             elif method == "POST":
                 async with session.post(url, headers=headers, json=data) as response:
+                    response_text = await response.text()
+                    print(f"Response Status: {response.status}")  # Debug print
+                    print(f"Response Text: {response_text}")  # Debug print
                     if response.status >= 400:
-                        error_text = await response.text()
-                        print(f"Error response: {error_text}")  # Debug print
-                        return {"error": error_text}, response.status
-                    return await response.json(), response.status
+                        return {"error": response_text}, response.status
+                    return await response.json() if response_text else {}, response.status
             elif method == "DELETE":
                 async with session.delete(url, headers=headers) as response:
-                    return await response.json(), response.status
+                    response_text = await response.text()
+                    print(f"Response Status: {response.status}")  # Debug print
+                    print(f"Response Text: {response_text}")  # Debug print
+                    return await response.json() if response_text else {}, response.status
         except aiohttp.ClientError as e:
             print(f"Client error in make_api_request: {str(e)}")  # Debug print
             raise HTTPException(status_code=500, detail=str(e))
@@ -193,14 +203,30 @@ async def home(request: Request):
 async def create_qos_session(request: QoSSessionRequest):
     """Create a new QoS session"""
     try:
-        print(f"Received request data: {request.dict()}")  # Debug print
         # Convert the request to a dict and handle HttpUrl serialization
         request_data = request.dict(exclude_none=True)
         if request_data.get('webhook') and request_data['webhook'].get('notificationUrl'):
             request_data['webhook']['notificationUrl'] = str(request_data['webhook']['notificationUrl'])
         
+        # Ensure required fields are present and properly formatted
+        if 'device' not in request_data or 'ipv4Address' not in request_data['device']:
+            raise HTTPException(status_code=400, detail="Device IPv4 address is required")
+            
+        if 'applicationServer' not in request_data or not any(request_data['applicationServer'].get(key) for key in ['ipv4Address', 'ipv6Address']):
+            raise HTTPException(status_code=400, detail="Application server address (IPv4 or IPv6) is required")
+            
+        if 'qosProfile' not in request_data:
+            raise HTTPException(status_code=400, detail="QoS profile is required")
+
+        # Remove any empty or None values
+        if request_data.get('device', {}).get('ipv4Address'):
+            ipv4_addr = request_data['device']['ipv4Address']
+            request_data['device']['ipv4Address'] = {k: v for k, v in ipv4_addr.items() if v is not None}
+
         response, status = await make_api_request("POST", "/sessions", request_data)
         return {"status": status, "response": response}
+    except HTTPException as he:
+        raise he
     except Exception as e:
         print(f"Error in create_qos_session: {str(e)}")  # Debug print
         import traceback
