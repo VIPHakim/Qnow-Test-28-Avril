@@ -199,7 +199,7 @@ async def create_qos_session(request: QoSSessionRequest):
         if request_data.get('webhook') and request_data['webhook'].get('notificationUrl'):
             request_data['webhook']['notificationUrl'] = str(request_data['webhook']['notificationUrl'])
         
-        response, status = await make_api_request("POST", "/qos/request", request_data)
+        response, status = await make_api_request("POST", "/sessions", request_data)
         return {"status": status, "response": response}
     except Exception as e:
         print(f"Error in create_qos_session: {str(e)}")  # Debug print
@@ -217,13 +217,13 @@ async def create_qos_session(request: QoSSessionRequest):
 @app.get("/qos/session/{session_id}")
 async def get_session_status(session_id: str):
     """Get status of a QoS session"""
-    response, status = await make_api_request("GET", f"/qos/session/{session_id}")
+    response, status = await make_api_request("GET", f"/sessions/{session_id}")
     return {"status": status, "response": response}
 
 @app.delete("/qos/session/{session_id}")
 async def delete_session(session_id: str):
     """Delete a QoS session"""
-    response, status = await make_api_request("DELETE", f"/qos/session/{session_id}")
+    response, status = await make_api_request("DELETE", f"/sessions/{session_id}")
     return {"status": status, "response": response}
 
 @app.get("/qos/profiles")
