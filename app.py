@@ -244,7 +244,7 @@ async def create_qos_session(request: QoSSessionRequest):
     """Create a new QoS session"""
     try:
         print("\n=== Processing QoS Session Request ===")
-        print(f"Input Request: {request.json(indent=2)}")
+        print(f"Input Request: {request.model_dump_json()}")
         
         # Format the request to match the exact structure required by the API
         formatted_request = {
@@ -299,12 +299,13 @@ async def create_qos_session(request: QoSSessionRequest):
         print(f"Error in create_qos_session: {str(e)}")
         import traceback
         traceback.print_exc()
+        error_data = request.model_dump() if hasattr(request, 'model_dump') else request.dict()
         raise HTTPException(
             status_code=500,
             detail={
                 "error": str(e),
                 "type": type(e).__name__,
-                "request_data": formatted_request if 'formatted_request' in locals() else request.dict(exclude_none=True)
+                "request_data": error_data
             }
         )
 
