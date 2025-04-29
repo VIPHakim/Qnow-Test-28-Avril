@@ -229,7 +229,7 @@
         const devicePorts = document.getElementById('device_ports').value;
         if (devicePorts) {
             formData.devicePorts = {
-                ports: devicePorts.split(',').map(port => parseInt(port.trim()))
+                ports: devicePorts.split(',').map(port => parseInt(port.trim())).filter(port => !isNaN(port))
             };
         }
 
@@ -237,17 +237,24 @@
         const serverPorts = document.getElementById('server_ports').value;
         if (serverPorts) {
             formData.applicationServerPorts = {
-                ports: serverPorts.split(',').map(port => parseInt(port.trim()))
+                ports: serverPorts.split(',').map(port => parseInt(port.trim())).filter(port => !isNaN(port))
             };
         }
 
         // Add webhook if URL is specified
         const notificationUrl = document.getElementById('notification_url').value;
         if (notificationUrl) {
-            formData.webhook = {
-                notificationUrl: notificationUrl,
-                notificationAuthToken: document.getElementById('notification_auth_token').value || undefined
-            };
+            try {
+                // Validate URL
+                new URL(notificationUrl);
+                formData.webhook = {
+                    notificationUrl: notificationUrl,
+                    notificationAuthToken: document.getElementById('notification_auth_token').value || undefined
+                };
+            } catch (error) {
+                alert('Invalid notification URL format');
+                return;
+            }
         }
 
         try {
@@ -265,7 +272,7 @@
             if (response.ok) {
                 alert('QoS session created successfully!');
             } else {
-                alert('Error creating QoS session: ' + data.detail);
+                alert('Error creating QoS session: ' + (data.detail || JSON.stringify(data)));
             }
         } catch (error) {
             console.error('Error:', error);

@@ -194,7 +194,12 @@ async def create_qos_session(request: QoSSessionRequest):
     """Create a new QoS session"""
     try:
         print(f"Received request data: {request.dict()}")  # Debug print
-        response, status = await make_api_request("POST", "/qos/request", request.dict(exclude_none=True))
+        # Convert the request to a dict and handle HttpUrl serialization
+        request_data = request.dict(exclude_none=True)
+        if request_data.get('webhook') and request_data['webhook'].get('notificationUrl'):
+            request_data['webhook']['notificationUrl'] = str(request_data['webhook']['notificationUrl'])
+        
+        response, status = await make_api_request("POST", "/qos/request", request_data)
         return {"status": status, "response": response}
     except Exception as e:
         print(f"Error in create_qos_session: {str(e)}")  # Debug print
@@ -205,7 +210,7 @@ async def create_qos_session(request: QoSSessionRequest):
             detail={
                 "error": str(e),
                 "type": type(e).__name__,
-                "request_data": request.dict(exclude_none=True)
+                "request_data": request_data if 'request_data' in locals() else request.dict(exclude_none=True)
             }
         )
 
