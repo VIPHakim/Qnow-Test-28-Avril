@@ -15,7 +15,7 @@ import base64
 # Load environment variables
 load_dotenv()
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api-qod.orange.com/v1")
+API_BASE_URL = "https://api.orange.com/camara/quality-on-demand/orange-lab/v0"
 
 app = FastAPI(title="Orange QoD API Tester")
 
