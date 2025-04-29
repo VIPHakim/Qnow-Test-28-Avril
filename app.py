@@ -154,7 +154,8 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
     }
     print(f"\nMaking {method} request to {endpoint}")  # Debug print
     print(f"Headers: {headers}")  # Debug print
-    print(f"Request Data: {json.dumps(data, indent=2)}")  # Pretty print the request data
+    if data:
+        print(f"Request Data: {json.dumps(data, indent=2)}")  # Pretty print the request data
 
     async with aiohttp.ClientSession() as session:
         url = f"{API_BASE_URL}{endpoint}"
@@ -164,27 +165,46 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
                 async with session.get(url, headers=headers) as response:
                     response_text = await response.text()
                     print(f"Response Status: {response.status}")  # Debug print
+                    print(f"Response Headers: {dict(response.headers)}")  # Debug print headers
                     print(f"Response Text: {response_text}")  # Debug print
-                    return await response.json() if response_text else {}, response.status
+                    try:
+                        return await response.json() if response_text else {}, response.status
+                    except json.JSONDecodeError as je:
+                        print(f"JSON Decode Error: {str(je)}")
+                        return {"error": response_text}, response.status
             elif method == "POST":
                 async with session.post(url, headers=headers, json=data) as response:
                     response_text = await response.text()
                     print(f"Response Status: {response.status}")  # Debug print
+                    print(f"Response Headers: {dict(response.headers)}")  # Debug print headers
                     print(f"Response Text: {response_text}")  # Debug print
-                    if response.status >= 400:
+                    try:
+                        if response.status >= 400:
+                            error_data = json.loads(response_text) if response_text else {"error": "Unknown error"}
+                            print(f"Error response data: {error_data}")
+                            return {"error": error_data}, response.status
+                        return await response.json() if response_text else {}, response.status
+                    except json.JSONDecodeError as je:
+                        print(f"JSON Decode Error: {str(je)}")
                         return {"error": response_text}, response.status
-                    return await response.json() if response_text else {}, response.status
             elif method == "DELETE":
                 async with session.delete(url, headers=headers) as response:
                     response_text = await response.text()
                     print(f"Response Status: {response.status}")  # Debug print
+                    print(f"Response Headers: {dict(response.headers)}")  # Debug print headers
                     print(f"Response Text: {response_text}")  # Debug print
-                    return await response.json() if response_text else {}, response.status
+                    try:
+                        return await response.json() if response_text else {}, response.status
+                    except json.JSONDecodeError as je:
+                        print(f"JSON Decode Error: {str(je)}")
+                        return {"error": response_text}, response.status
         except aiohttp.ClientError as e:
             print(f"Client error in make_api_request: {str(e)}")  # Debug print
             raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
             print(f"Unexpected error in make_api_request: {str(e)}")  # Debug print
+            import traceback
+            traceback.print_exc()  # Print full stack trace
             raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/", response_class=HTMLResponse)
