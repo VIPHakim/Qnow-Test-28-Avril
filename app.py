@@ -87,21 +87,19 @@ class PortsSpec(BaseModel):
 
 class DeviceIpv4Addr(BaseModel):
     """IPv4 address specification for a device"""
-    publicAddress: str = Field(..., example="84.125.93.10")
-    privateAddress: Optional[str] = None
-    publicPort: Optional[int] = Field(None, ge=0, le=65535)
+    publicAddress: str = Field(..., example="84.125.93.10", description="Public IPv4 address")
+    privateAddress: Optional[str] = Field(None, example="192.168.1.10", description="Private IPv4 address")
+    publicPort: Optional[int] = Field(None, ge=0, le=65535, description="Public port number")
 
 class Device(BaseModel):
     """Device identification information"""
-    phoneNumber: Optional[str] = Field(None, pattern=r'^\+?[0-9]{5,15}$', example="123456789")
-    networkAccessIdentifier: Optional[str] = Field(None, example="123456789@domain.com")
-    ipv4Address: Optional[DeviceIpv4Addr] = None
-    ipv6Address: Optional[str] = Field(None, example="2001:db8:85a3:8d3:1319:8a2e:370:7344")
+    ipv4Address: DeviceIpv4Addr = Field(..., description="IPv4 address information")
+    ipv6Address: Optional[str] = Field(None, example="2001:db8:85a3:8d3:1319:8a2e:370:7344", description="IPv6 address")
 
 class ApplicationServer(BaseModel):
     """Application server identification"""
-    ipv4Address: Optional[str] = Field(None, example="192.168.0.1/24")
-    ipv6Address: Optional[str] = Field(None, example="2001:db8:85a3:8d3:1319:8a2e:370:7344")
+    ipv4Address: str = Field(..., example="192.168.0.1", description="IPv4 address of the application server")
+    ipv6Address: Optional[str] = Field(None, example="2001:db8:85a3:8d3:1319:8a2e:370:7344", description="IPv6 address of the application server")
 
 class Webhook(BaseModel):
     """Webhook configuration for notifications"""
@@ -116,11 +114,11 @@ class QoSSessionRequest(BaseModel):
         le=86400,
         description="Session duration in seconds. Maximum 24 hours."
     )
-    device: Device
-    applicationServer: ApplicationServer
-    devicePorts: Optional[PortsSpec] = None
-    applicationServerPorts: Optional[PortsSpec] = None
-    qosProfile: str = Field(..., min_length=3, max_length=256, pattern=r'^[a-zA-Z0-9_.-]+$')
+    device: Device = Field(..., description="Device information")
+    applicationServer: ApplicationServer = Field(..., description="Application server information")
+    devicePorts: Optional[PortsSpec] = Field(None, description="Device port specifications")
+    applicationServerPorts: Optional[PortsSpec] = Field(None, description="Application server port specifications")
+    qosProfile: str = Field(..., min_length=1, max_length=256, description="QoS profile identifier")
     webhook: Optional[Webhook] = None
 
 class QosStatus(str, Enum):
@@ -207,23 +205,40 @@ async def create_qos_session(request: QoSSessionRequest):
         request_data = request.dict(exclude_none=True)
         if request_data.get('webhook') and request_data['webhook'].get('notificationUrl'):
             request_data['webhook']['notificationUrl'] = str(request_data['webhook']['notificationUrl'])
-        
-        # Ensure required fields are present and properly formatted
-        if 'device' not in request_data or 'ipv4Address' not in request_data['device']:
-            raise HTTPException(status_code=400, detail="Device IPv4 address is required")
-            
-        if 'applicationServer' not in request_data or not any(request_data['applicationServer'].get(key) for key in ['ipv4Address', 'ipv6Address']):
-            raise HTTPException(status_code=400, detail="Application server address (IPv4 or IPv6) is required")
-            
-        if 'qosProfile' not in request_data:
-            raise HTTPException(status_code=400, detail="QoS profile is required")
 
-        # Remove any empty or None values
-        if request_data.get('device', {}).get('ipv4Address'):
-            ipv4_addr = request_data['device']['ipv4Address']
-            request_data['device']['ipv4Address'] = {k: v for k, v in ipv4_addr.items() if v is not None}
+        # Format the request according to API requirements
+        formatted_request = {
+            "duration": request_data["duration"],
+            "device": {
+                "ipv4Address": {
+                    "publicAddress": request_data["device"]["ipv4Address"]["publicAddress"],
+                    "privateAddress": request_data["device"]["ipv4Address"].get("privateAddress"),
+                    "publicPort": request_data["device"]["ipv4Address"].get("publicPort")
+                }
+            },
+            "applicationServer": {
+                "ipv4Address": request_data["applicationServer"]["ipv4Address"]
+            },
+            "qosProfile": request_data["qosProfile"]
+        }
 
-        response, status = await make_api_request("POST", "/sessions", request_data)
+        # Add optional fields only if they exist
+        if "devicePorts" in request_data:
+            formatted_request["devicePorts"] = request_data["devicePorts"]
+        if "applicationServerPorts" in request_data:
+            formatted_request["applicationServerPorts"] = request_data["applicationServerPorts"]
+        if "webhook" in request_data:
+            formatted_request["webhook"] = request_data["webhook"]
+
+        # Remove any None values from nested dictionaries
+        formatted_request = {k: v for k, v in formatted_request.items() if v is not None}
+        if "device" in formatted_request and "ipv4Address" in formatted_request["device"]:
+            formatted_request["device"]["ipv4Address"] = {
+                k: v for k, v in formatted_request["device"]["ipv4Address"].items() if v is not None
+            }
+
+        print(f"Formatted request data: {json.dumps(formatted_request, indent=2)}")  # Debug print
+        response, status = await make_api_request("POST", "/sessions", formatted_request)
         return {"status": status, "response": response}
     except HTTPException as he:
         raise he
@@ -236,7 +251,7 @@ async def create_qos_session(request: QoSSessionRequest):
             detail={
                 "error": str(e),
                 "type": type(e).__name__,
-                "request_data": request_data if 'request_data' in locals() else request.dict(exclude_none=True)
+                "request_data": formatted_request if 'formatted_request' in locals() else request.dict(exclude_none=True)
             }
         )
 
