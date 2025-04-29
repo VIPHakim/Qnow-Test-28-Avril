@@ -13,6 +13,7 @@ import time
 import base64
 import json
 import re
+import hashlib
 
 # Load environment variables
 load_dotenv()
@@ -134,25 +135,19 @@ class QoSSessionRequest(BaseModel):
     )
     qosProfile: str = Field(
         ...,
-        pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-        example="b55e2cc8-b386-4d90-9f95-b98ba20be050",
-        description="QoS profile UUID in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+        description="Your QoS profile name (will be converted to UUID format)"
     )
     webhook: Optional[Webhook] = None
 
     @validator('qosProfile')
-    def validate_qos_profile(cls, v):
-        import re
-        if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v.lower()):
-            raise ValueError(
-                'Invalid QoS Profile format. Please use this exact UUID format:\n'
-                'Example: b55e2cc8-b386-4d90-9f95-b98ba20be050\n'
-                f'You provided: {v}'
-            )
-        return v
+    def convert_to_uuid(cls, v):
+        # Convert any string into a deterministic UUID v5 using DNS namespace
+        profile_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, v))
+        print(f"\nConverted QoS Profile: '{v}' -> UUID: {profile_uuid}")
+        return profile_uuid
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "duration": 600,
                 "device": {
@@ -170,10 +165,7 @@ class QoSSessionRequest(BaseModel):
                 "applicationServerPorts": {
                     "ports": [10000]
                 },
-                "qosProfile": "b55e2cc8-b386-4d90-9f95-b98ba20be050",
-                "webhook": {
-                    "notificationUrl": "https://webhook.site/.....-b450-cfffc51b4c13"
-                }
+                "qosProfile": "low"  # Will be automatically converted to UUID format
             }
         }
 
@@ -282,6 +274,36 @@ async def create_qos_session(request: QoSSessionRequest):
         print("\n=== Processing QoS Session Request ===")
         print(f"Input Request: {request.model_dump_json()}")
 
+        # First, get available QoS profiles
+        profiles_response, profiles_status = await make_api_request("GET", "/qos-profiles")
+        if profiles_status != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch QoS profiles")
+
+        # Extract available profile names and IDs
+        available_profiles = {
+            profile.get("name", "").lower(): profile.get("id")
+            for profile in profiles_response
+        }
+        print(f"\nAvailable QoS Profiles: {json.dumps(available_profiles, indent=2)}")
+
+        # Convert the requested profile name to lowercase for case-insensitive matching
+        requested_profile = request.qosProfile.lower()
+        
+        # Check if the profile exists and get its ID
+        if requested_profile not in available_profiles:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Invalid QoS Profile",
+                    "message": f"Profile '{request.qosProfile}' not found",
+                    "available_profiles": list(available_profiles.keys())
+                }
+            )
+
+        # Use the correct profile ID from the API
+        profile_id = available_profiles[requested_profile]
+        print(f"\nUsing QoS Profile: {request.qosProfile} -> ID: {profile_id}")
+
         # Format the request EXACTLY as in the Orange example
         formatted_request = {
             "duration": request.duration,
@@ -300,7 +322,7 @@ async def create_qos_session(request: QoSSessionRequest):
             "applicationServerPorts": {
                 "ports": [10000]  # Always use this exact port
             },
-            "qosProfile": request.qosProfile.lower()  # Ensure lowercase UUID
+            "qosProfile": profile_id  # Use the correct profile ID from the API
         }
 
         # Only add webhook if provided
@@ -352,13 +374,10 @@ async def delete_session(session_id: str):
 
 @app.get("/qos/profiles", response_model=dict)
 async def get_qos_profiles():
-    """
-    Get all QoS profiles managed by the Orange QoS server.
-    This endpoint should be called first to get valid profile IDs.
-    """
+    """Get all QoS profiles managed by the Orange QoS server"""
     try:
         response, status = await make_api_request("GET", "/qos-profiles")
-        print(f"QoS Profiles Response: {json.dumps(response, indent=2)}")  # Debug print
+        print(f"Available QoS Profiles: {json.dumps(response, indent=2)}")
         return {"status": status, "profiles": response}
     except Exception as e:
         print(f"Error fetching QoS profiles: {str(e)}")
