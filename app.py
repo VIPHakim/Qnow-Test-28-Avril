@@ -87,9 +87,8 @@ class PortsSpec(BaseModel):
 
 class DeviceIpv4Addr(BaseModel):
     """IPv4 address specification for a device"""
-    publicAddress: str = Field(..., example="84.125.93.10", description="Public IPv4 address")
-    privateAddress: Optional[str] = Field(None, example="192.168.1.10", description="Private IPv4 address")
-    publicPort: Optional[int] = Field(None, ge=0, le=65535, description="Public port number")
+    publicAddress: str = Field(..., example="172.20.120.105", pattern=r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$')
+    privateAddress: Optional[str] = Field(None, example="172.20.120.105", pattern=r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$')
 
 class Device(BaseModel):
     """Device identification information"""
@@ -101,7 +100,7 @@ class ApplicationServer(BaseModel):
     ipv4Address: str = Field(
         ..., 
         example="172.20.120.84",
-        description="IPv4 address of the application server"
+        pattern=r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
     )
     ipv6Address: Optional[str] = Field(None, example="2001:db8:85a3:8d3:1319:8a2e:370:7344", description="IPv6 address of the application server")
 
@@ -119,23 +118,33 @@ class Webhook(BaseModel):
 class QoSSessionRequest(BaseModel):
     """Request model for creating a QoS session"""
     duration: int = Field(
-        default=86400,
+        default=600,
         ge=1,
         le=86400,
         description="Session duration in seconds. Maximum 24 hours."
     )
-    device: Device = Field(..., description="Device information")
-    applicationServer: ApplicationServer = Field(..., description="Application server information")
-    devicePorts: Optional[PortsSpec] = Field(None, description="Device port specifications")
-    applicationServerPorts: Optional[PortsSpec] = Field(None, description="Application server port specifications")
+    device: Device
+    applicationServer: ApplicationServer
+    devicePorts: PortsSpec = Field(
+        default_factory=lambda: PortsSpec(ports=[50984])
+    )
+    applicationServerPorts: PortsSpec = Field(
+        default_factory=lambda: PortsSpec(ports=[10000])
+    )
     qosProfile: str = Field(
-        ..., 
-        min_length=1,
-        max_length=256,
-        description="QoS profile identifier",
-        example="b55e2cc8-b386-4d90-9f95-b98ba20be050"
+        ...,
+        pattern=r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        example="b55e2cc8-b386-4d90-9f95-b98ba20be050",
+        description="QoS profile UUID in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
     )
     webhook: Optional[Webhook] = None
+
+    @validator('qosProfile')
+    def validate_qos_profile(cls, v):
+        import re
+        if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', v):
+            raise ValueError('QoS profile must be a valid UUID in format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')
+        return v
 
     class Config:
         schema_extra = {
@@ -273,45 +282,30 @@ async def create_qos_session(request: QoSSessionRequest):
         if qos_status != 200:
             raise HTTPException(status_code=400, detail="Failed to verify QoS profiles")
         
-        # Check if the requested profile exists
-        available_profiles = [profile["name"] for profile in qos_profiles_response]
-        if request.qosProfile not in available_profiles:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid QoS profile. Available profiles: {', '.join(available_profiles)}"
-            )
-
-        # Format the request with required ports
+        # Format the request exactly as in the Orange example
         formatted_request = {
             "duration": request.duration,
             "device": {
                 "ipv4Address": {
                     "publicAddress": request.device.ipv4Address.publicAddress,
-                    "privateAddress": request.device.ipv4Address.privateAddress if request.device.ipv4Address.privateAddress else None
+                    "privateAddress": request.device.ipv4Address.privateAddress
                 }
             },
             "applicationServer": {
                 "ipv4Address": request.applicationServer.ipv4Address
             },
             "devicePorts": {
-                "ports": request.devicePorts.ports if request.devicePorts and request.devicePorts.ports else [50984]  # Default port if not specified
+                "ports": [50984] if not request.devicePorts or not request.devicePorts.ports else request.devicePorts.ports
             },
             "applicationServerPorts": {
-                "ports": request.applicationServerPorts.ports if request.applicationServerPorts and request.applicationServerPorts.ports else [10000]  # Default port if not specified
+                "ports": [10000] if not request.applicationServerPorts or not request.applicationServerPorts.ports else request.applicationServerPorts.ports
             },
             "qosProfile": request.qosProfile
         }
 
-        # Add webhook if provided
         if request.webhook and request.webhook.notificationUrl:
             formatted_request["webhook"] = {
                 "notificationUrl": str(request.webhook.notificationUrl)
-            }
-
-        # Remove any None values from nested dictionaries
-        if "device" in formatted_request and "ipv4Address" in formatted_request["device"]:
-            formatted_request["device"]["ipv4Address"] = {
-                k: v for k, v in formatted_request["device"]["ipv4Address"].items() if v is not None
             }
 
         print(f"\n=== Formatted Request ===")
