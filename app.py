@@ -135,16 +135,9 @@ class QoSSessionRequest(BaseModel):
     )
     qosProfile: str = Field(
         ...,
-        description="Your QoS profile name (will be converted to UUID format)"
+        description="QoS profile name (e.g., 'low', 'medium', 'high', etc.)"
     )
     webhook: Optional[Webhook] = None
-
-    @validator('qosProfile')
-    def convert_to_uuid(cls, v):
-        # Convert any string into a deterministic UUID v5 using DNS namespace
-        profile_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, v))
-        print(f"\nConverted QoS Profile: '{v}' -> UUID: {profile_uuid}")
-        return profile_uuid
 
     class Config:
         json_schema_extra = {
@@ -165,7 +158,7 @@ class QoSSessionRequest(BaseModel):
                 "applicationServerPorts": {
                     "ports": [10000]
                 },
-                "qosProfile": "low"  # Will be automatically converted to UUID format
+                "qosProfile": "low"  # Use a profile name, not UUID
             }
         }
 
@@ -279,30 +272,32 @@ async def create_qos_session(request: QoSSessionRequest):
         if profiles_status != 200:
             raise HTTPException(status_code=400, detail="Failed to fetch QoS profiles")
 
-        # Extract available profile names and IDs
-        available_profiles = {
-            profile.get("name", "").lower(): profile.get("id")
+        # Create a mapping of profile names to their data
+        profile_map = {
+            profile.get("name", "").lower(): profile
             for profile in profiles_response
+            if isinstance(profile, dict) and "name" in profile
         }
-        print(f"\nAvailable QoS Profiles: {json.dumps(available_profiles, indent=2)}")
 
-        # Convert the requested profile name to lowercase for case-insensitive matching
+        # Convert requested profile to lowercase for case-insensitive matching
         requested_profile = request.qosProfile.lower()
-        
-        # Check if the profile exists and get its ID
-        if requested_profile not in available_profiles:
+
+        # Check if the profile exists
+        if requested_profile not in profile_map:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "Invalid QoS Profile",
                     "message": f"Profile '{request.qosProfile}' not found",
-                    "available_profiles": list(available_profiles.keys())
+                    "available_profiles": list(profile_map.keys())
                 }
             )
 
-        # Use the correct profile ID from the API
-        profile_id = available_profiles[requested_profile]
-        print(f"\nUsing QoS Profile: {request.qosProfile} -> ID: {profile_id}")
+        # Get the profile data
+        profile_data = profile_map[requested_profile]
+        profile_id = profile_data.get("id")
+
+        print(f"\nMatched QoS Profile: {request.qosProfile} -> {profile_data}")
 
         # Format the request EXACTLY as in the Orange example
         formatted_request = {
@@ -322,7 +317,7 @@ async def create_qos_session(request: QoSSessionRequest):
             "applicationServerPorts": {
                 "ports": [10000]  # Always use this exact port
             },
-            "qosProfile": profile_id  # Use the correct profile ID from the API
+            "qosProfile": profile_id
         }
 
         # Only add webhook if provided
@@ -372,13 +367,21 @@ async def delete_session(session_id: str):
     response, status = await make_api_request("DELETE", f"/sessions/{session_id}")
     return {"status": status, "response": response}
 
-@app.get("/qos/profiles", response_model=dict)
+@app.get("/qos/profiles")
 async def get_qos_profiles():
-    """Get all QoS profiles managed by the Orange QoS server"""
+    """Get all available QoS profiles"""
     try:
         response, status = await make_api_request("GET", "/qos-profiles")
-        print(f"Available QoS Profiles: {json.dumps(response, indent=2)}")
-        return {"status": status, "profiles": response}
+        if status == 200 and isinstance(response, list):
+            # Extract just the profile names for easier reference
+            profile_names = [profile.get("name", "") for profile in response]
+            print(f"\nAvailable QoS Profiles: {profile_names}")
+            return {
+                "status": status,
+                "profiles": profile_names,
+                "message": "Use one of these profile names in your request"
+            }
+        return {"status": status, "response": response}
     except Exception as e:
         print(f"Error fetching QoS profiles: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
