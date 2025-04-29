@@ -120,9 +120,9 @@ class QoSSessionRequest(BaseModel):
     applicationServerPorts: Optional[PortsSpec] = Field(None, description="Application server port specifications")
     qosProfile: str = Field(
         ..., 
-        min_length=36, 
-        max_length=36, 
-        description="QoS profile identifier in UUID format",
+        min_length=1,
+        max_length=256,
+        description="QoS profile identifier",
         example="b55e2cc8-b386-4d90-9f95-b98ba20be050"
     )
     webhook: Optional[Webhook] = None
@@ -315,13 +315,19 @@ async def delete_session(session_id: str):
     response, status = await make_api_request("DELETE", f"/sessions/{session_id}")
     return {"status": status, "response": response}
 
-@app.get("/qos/profiles")
+@app.get("/qos/profiles", response_model=dict)
 async def get_qos_profiles():
     """
     Get all QoS profiles managed by the Orange QoS server.
+    This endpoint should be called first to get valid profile IDs.
     """
-    response, status = await make_api_request("GET", "/qos-profiles")
-    return {"status": status, "profiles": response}
+    try:
+        response, status = await make_api_request("GET", "/qos-profiles")
+        print(f"QoS Profiles Response: {json.dumps(response, indent=2)}")  # Debug print
+        return {"status": status, "profiles": response}
+    except Exception as e:
+        print(f"Error fetching QoS profiles: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/token/status")
 async def token_status():
