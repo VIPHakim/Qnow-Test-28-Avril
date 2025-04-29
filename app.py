@@ -177,67 +177,56 @@ class SessionInfo(QoSSessionRequest):
     messages: Optional[List[Message]] = None
 
 async def make_api_request(method: str, endpoint: str, data: dict = None):
-    token = await get_access_token()
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Cache-Control": "no-cache"
-    }
-    print(f"\nMaking {method} request to {endpoint}")  # Debug print
-    print(f"Headers: {headers}")  # Debug print
-    if data:
-        print(f"Request Data: {json.dumps(data, indent=2)}")  # Pretty print the request data
+    try:
+        token = await get_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Cache-Control": "no-cache"
+        }
+        print(f"\n=== API Request Details ===")
+        print(f"Method: {method}")
+        print(f"Endpoint: {endpoint}")
+        print(f"Headers: {json.dumps(headers, indent=2)}")
+        if data:
+            print(f"Request Data: {json.dumps(data, indent=2)}")
 
-    async with aiohttp.ClientSession() as session:
-        url = f"{API_BASE_URL}{endpoint}"
-        print(f"Full URL: {url}")  # Debug print
-        try:
-            if method == "GET":
-                async with session.get(url, headers=headers) as response:
-                    response_text = await response.text()
-                    print(f"Response Status: {response.status}")  # Debug print
-                    print(f"Response Headers: {dict(response.headers)}")  # Debug print headers
-                    print(f"Response Text: {response_text}")  # Debug print
-                    try:
-                        return await response.json() if response_text else {}, response.status
-                    except json.JSONDecodeError as je:
-                        print(f"JSON Decode Error: {str(je)}")
-                        return {"error": response_text}, response.status
-            elif method == "POST":
-                async with session.post(url, headers=headers, json=data) as response:
-                    response_text = await response.text()
-                    print(f"Response Status: {response.status}")  # Debug print
-                    print(f"Response Headers: {dict(response.headers)}")  # Debug print headers
-                    print(f"Response Text: {response_text}")  # Debug print
-                    try:
+        async with aiohttp.ClientSession() as session:
+            url = f"{API_BASE_URL}{endpoint}"
+            print(f"Full URL: {url}")
+
+            async with session.post(url, headers=headers, json=data) if method == "POST" else \
+                     session.get(url, headers=headers) if method == "GET" else \
+                     session.delete(url, headers=headers) as response:
+                
+                print(f"\n=== API Response Details ===")
+                print(f"Status Code: {response.status}")
+                print(f"Response Headers: {dict(response.headers)}")
+                
+                response_text = await response.text()
+                print(f"Raw Response Text: {response_text}")
+                
+                try:
+                    if response_text:
+                        response_json = json.loads(response_text)
+                        print(f"Parsed Response JSON: {json.dumps(response_json, indent=2)}")
                         if response.status >= 400:
-                            error_data = json.loads(response_text) if response_text else {"error": "Unknown error"}
-                            print(f"Error response data: {error_data}")
-                            return {"error": error_data}, response.status
-                        return await response.json() if response_text else {}, response.status
-                    except json.JSONDecodeError as je:
-                        print(f"JSON Decode Error: {str(je)}")
-                        return {"error": response_text}, response.status
-            elif method == "DELETE":
-                async with session.delete(url, headers=headers) as response:
-                    response_text = await response.text()
-                    print(f"Response Status: {response.status}")  # Debug print
-                    print(f"Response Headers: {dict(response.headers)}")  # Debug print headers
-                    print(f"Response Text: {response_text}")  # Debug print
-                    try:
-                        return await response.json() if response_text else {}, response.status
-                    except json.JSONDecodeError as je:
-                        print(f"JSON Decode Error: {str(je)}")
-                        return {"error": response_text}, response.status
-        except aiohttp.ClientError as e:
-            print(f"Client error in make_api_request: {str(e)}")  # Debug print
-            raise HTTPException(status_code=500, detail=str(e))
-        except Exception as e:
-            print(f"Unexpected error in make_api_request: {str(e)}")  # Debug print
-            import traceback
-            traceback.print_exc()  # Print full stack trace
-            raise HTTPException(status_code=500, detail=str(e))
+                            return {"error": response_json}, response.status
+                        return response_json, response.status
+                    return {}, response.status
+                except json.JSONDecodeError as je:
+                    print(f"JSON Decode Error: {str(je)}")
+                    return {"error": response_text}, response.status
+                
+    except aiohttp.ClientError as e:
+        print(f"Client Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"API Client Error: {str(e)}")
+    except Exception as e:
+        print(f"Unexpected Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Unexpected Error: {str(e)}")
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -254,46 +243,62 @@ async def home(request: Request):
 async def create_qos_session(request: QoSSessionRequest):
     """Create a new QoS session"""
     try:
+        print("\n=== Processing QoS Session Request ===")
+        print(f"Input Request: {request.json(indent=2)}")
+        
         # Format the request to match the exact structure required by the API
         formatted_request = {
             "duration": request.duration,
             "device": {
                 "ipv4Address": {
                     "publicAddress": request.device.ipv4Address.publicAddress,
-                    "privateAddress": request.device.ipv4Address.privateAddress
+                    "privateAddress": request.device.ipv4Address.privateAddress if request.device.ipv4Address.privateAddress else None
                 }
             },
             "applicationServer": {
                 "ipv4Address": request.applicationServer.ipv4Address
             },
-            "devicePorts": {
-                "ports": request.devicePorts.ports if request.devicePorts else None
-            } if request.devicePorts else None,
-            "applicationServerPorts": {
-                "ports": request.applicationServerPorts.ports if request.applicationServerPorts else None
-            } if request.applicationServerPorts else None,
-            "qosProfile": request.qosProfile,
-            "webhook": {
-                "notificationUrl": str(request.webhook.notificationUrl) if request.webhook else None
-            } if request.webhook else None
+            "qosProfile": request.qosProfile
         }
 
-        # Remove None values and empty dictionaries
+        # Add optional fields only if they exist
+        if request.devicePorts and request.devicePorts.ports:
+            formatted_request["devicePorts"] = {"ports": request.devicePorts.ports}
+        
+        if request.applicationServerPorts and request.applicationServerPorts.ports:
+            formatted_request["applicationServerPorts"] = {"ports": request.applicationServerPorts.ports}
+        
+        if request.webhook and request.webhook.notificationUrl:
+            formatted_request["webhook"] = {
+                "notificationUrl": str(request.webhook.notificationUrl)
+            }
+
+        # Remove any None values
         formatted_request = {k: v for k, v in formatted_request.items() if v is not None}
         if "device" in formatted_request and "ipv4Address" in formatted_request["device"]:
             formatted_request["device"]["ipv4Address"] = {
                 k: v for k, v in formatted_request["device"]["ipv4Address"].items() if v is not None
             }
 
-        print(f"Formatted request data: {json.dumps(formatted_request, indent=2)}")  # Debug print
+        print(f"\n=== Formatted Request ===")
+        print(json.dumps(formatted_request, indent=2))
+
+        # Make the API request
         response, status = await make_api_request("POST", "/sessions", formatted_request)
+        
+        print(f"\n=== Final Response ===")
+        print(f"Status: {status}")
+        print(f"Response: {json.dumps(response, indent=2)}")
+        
         return {"status": status, "response": response}
+        
     except HTTPException as he:
+        print(f"HTTP Exception: {str(he)}")
         raise he
     except Exception as e:
-        print(f"Error in create_qos_session: {str(e)}")  # Debug print
+        print(f"Error in create_qos_session: {str(e)}")
         import traceback
-        traceback.print_exc()  # Print full traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500,
             detail={
