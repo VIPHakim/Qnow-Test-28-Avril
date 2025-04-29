@@ -14,6 +14,8 @@ import base64
 import json
 import re
 import hashlib
+import logging
+import httpx
 
 # Load environment variables
 load_dotenv()
@@ -384,53 +386,95 @@ async def delete_session(session_id: str):
 
 @app.get("/qos/profiles")
 async def get_qos_profiles():
-    """Get all available QoS profiles"""
     try:
-        response, status = await make_api_request("GET", "/qos-profiles")
-        print("\n=== QoS Profiles Response ===")
-        print(f"Status: {status}")
-        print(f"Response: {json.dumps(response, indent=2)}")
-
-        if status == 200:
-            # Ensure we have a list of profiles
-            if isinstance(response, list):
-                profiles = []
-                for profile in response:
-                    if isinstance(profile, dict):
-                        # Extract name and id from each profile
-                        name = profile.get('name')
-                        profile_id = profile.get('id')
-                        if name and profile_id:
-                            profiles.append({
-                                'name': name,
-                                'id': profile_id
-                            })
+        logging.info("Fetching QoS profiles from Orange API")
+        
+        # Get a fresh token
+        token = await get_access_token()
+        if not token:
+            logging.error("Failed to obtain token for QoS profiles request")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Failed to obtain authentication token"}
+            )
+            
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "X-OAPI-Request-Id": str(uuid.uuid4())
+        }
+        
+        async with httpx.AsyncClient() as client:
+            logging.info(f"Making request to {API_BASE_URL}/qos/profiles")
+            response = await client.get(
+                f"{API_BASE_URL}/qos/profiles",
+                headers=headers
+            )
+            
+            logging.info(f"QoS profiles response status: {response.status_code}")
+            logging.info(f"QoS profiles response headers: {response.headers}")
+            
+            try:
+                response_data = response.json()
+                logging.info(f"QoS profiles response data: {response_data}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse QoS profiles response: {e}")
+                logging.error(f"Raw response content: {response.text}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": "Invalid JSON response from Orange API"}
+                )
+            
+            if response.status_code != 200:
+                error_message = response_data.get('error', 'Unknown error')
+                logging.error(f"Error from Orange API: {error_message}")
+                return JSONResponse(
+                    status_code=response.status_code,
+                    content={"error": error_message}
+                )
                 
-                print(f"\nProcessed Profiles: {json.dumps(profiles, indent=2)}")
-                return {
-                    "status": status,
-                    "profiles": profiles
-                }
-            else:
-                print(f"Unexpected response format: {response}")
-                return {
-                    "status": 500,
-                    "error": "Invalid response format from QoS API",
-                    "raw_response": response
-                }
-        else:
-            print(f"Error response: {response}")
+            # Validate response structure
+            if not isinstance(response_data, list):
+                logging.error(f"Unexpected response format. Expected list, got: {type(response_data)}")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": 200,
+                        "profiles": [],
+                        "error": "Invalid response format from Orange API"
+                    }
+                )
+            
+            # Transform response to expected format
+            profiles = []
+            for profile in response_data:
+                if isinstance(profile, dict) and 'id' in profile and 'name' in profile:
+                    profiles.append({
+                        'id': profile['id'],
+                        'name': profile['name'],
+                        'parameters': profile.get('parameters', {})
+                    })
+                else:
+                    logging.warning(f"Skipping invalid profile data: {profile}")
+            
+            logging.info(f"Successfully processed {len(profiles)} QoS profiles")
             return {
-                "status": status,
-                "error": "Failed to fetch QoS profiles",
-                "details": response
+                "status": 200,
+                "profiles": profiles
             }
             
+    except httpx.RequestError as e:
+        logging.error(f"Network error while fetching QoS profiles: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Network error: {str(e)}"}
+        )
     except Exception as e:
-        print(f"Error fetching QoS profiles: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Unexpected error in get_qos_profiles: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Internal server error: {str(e)}"}
+        )
 
 @app.get("/token/status")
 async def token_status():

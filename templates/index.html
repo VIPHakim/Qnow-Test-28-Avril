@@ -279,14 +279,25 @@
 
     async function loadQosProfiles() {
         try {
+            console.log('Starting to load QoS profiles...');
             const response = await fetch('/qos/profiles');
+            console.log('Raw response:', response);
+            
             const data = await response.json();
+            console.log('Parsed profiles data:', data);
+            
             const dropdown = document.getElementById('predefinedProfileSelect');
             dropdown.innerHTML = '';
             
-            console.log('Profiles response:', data);  // Debug log
+            if (!response.ok) {
+                console.error('Server returned error:', data);
+                dropdown.innerHTML = `<option value="">Error: ${data.error || 'Failed to load profiles'}</option>`;
+                return;
+            }
             
             if (data.status === 200 && Array.isArray(data.profiles)) {
+                console.log('Processing profiles array:', data.profiles);
+                
                 // Add default option
                 const defaultOption = document.createElement('option');
                 defaultOption.value = '';
@@ -296,35 +307,37 @@
                 // Store profiles data globally
                 window.profilesData = {};
                 
+                if (data.profiles.length === 0) {
+                    console.log('No profiles found in response array');
+                    dropdown.innerHTML = '<option value="">No profiles available</option>';
+                    return;
+                }
+                
                 // Add profile options
-                data.profiles.forEach(profile => {
-                    console.log('Processing profile:', profile);  // Debug log
+                data.profiles.forEach((profile, index) => {
+                    console.log(`Processing profile ${index}:`, profile);
                     if (profile && profile.name && profile.id) {
                         const option = document.createElement('option');
-                        option.value = profile.id;  // Use the profile ID as the value
-                        option.text = profile.name; // Show the profile name to the user
+                        option.value = profile.id;
+                        option.text = profile.name;
                         dropdown.appendChild(option);
                         
-                        // Store the full profile data
                         window.profilesData[profile.name] = profile;
+                    } else {
+                        console.warn('Invalid profile data:', profile);
                     }
                 });
                 
-                // Show the dropdown
-                dropdown.style.display = 'block';
+                console.log('Final profiles data:', window.profilesData);
                 
-                if (data.profiles.length === 0) {
-                    dropdown.innerHTML = '<option value="">No profiles available</option>';
-                    console.log('No profiles found in response');  // Debug log
-                }
             } else {
-                console.log('Invalid profiles response:', data);  // Debug log
+                console.error('Invalid response format:', data);
                 dropdown.innerHTML = '<option value="">Error: Invalid response format</option>';
             }
         } catch (error) {
-            console.error('Error loading profiles:', error);
-            document.getElementById('predefinedProfileSelect').innerHTML = 
-                '<option value="">Error loading profiles</option>';
+            console.error('Error in loadQosProfiles:', error);
+            const dropdown = document.getElementById('predefinedProfileSelect');
+            dropdown.innerHTML = `<option value="">Error: ${error.message}</option>`;
         }
     }
 
