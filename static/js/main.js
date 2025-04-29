@@ -1,6 +1,74 @@
 document.addEventListener('DOMContentLoaded', function() {
     const responseDisplay = document.getElementById('responseDisplay');
 
+    // Load QoS profiles when the page loads
+    async function loadQoSProfiles() {
+        try {
+            console.log('Starting to load QoS profiles...');
+            const response = await fetch('/qos/profiles');
+            console.log('Raw response:', response);
+            
+            const data = await response.json();
+            console.log('Parsed profiles data:', data);
+            
+            const profileSelect = document.getElementById('qos_profile');
+            profileSelect.innerHTML = '';
+            
+            if (!response.ok) {
+                console.error('Server returned error:', data);
+                profileSelect.innerHTML = `<option value="">Error: ${data.error || 'Failed to load profiles'}</option>`;
+                return;
+            }
+            
+            if (data.status === 200 && Array.isArray(data.profiles)) {
+                console.log('Processing profiles array:', data.profiles);
+                
+                // Add default option
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.text = 'Select a profile';
+                profileSelect.appendChild(defaultOption);
+                
+                // Store profiles data globally
+                window.profilesData = {};
+                
+                if (data.profiles.length === 0) {
+                    console.log('No profiles found in response array');
+                    profileSelect.innerHTML = '<option value="">No profiles available</option>';
+                    return;
+                }
+                
+                // Add profile options
+                data.profiles.forEach((profile, index) => {
+                    console.log(`Processing profile ${index}:`, profile);
+                    if (profile && profile.name && profile.id) {
+                        const option = document.createElement('option');
+                        option.value = profile.id;
+                        option.text = profile.name;
+                        profileSelect.appendChild(option);
+                        
+                        window.profilesData[profile.name] = profile;
+                    } else {
+                        console.warn('Invalid profile data:', profile);
+                    }
+                });
+                
+                console.log('Final profiles data:', window.profilesData);
+                
+            } else {
+                console.error('Invalid response format:', data);
+                profileSelect.innerHTML = '<option value="">Error: Invalid response format</option>';
+            }
+        } catch (error) {
+            console.error('Error in loadQoSProfiles:', error);
+            const profileSelect = document.getElementById('qos_profile');
+            profileSelect.innerHTML = `<option value="">Error: ${error.message}</option>`;
+        }
+    }
+
+    // Load profiles when page loads
+    loadQoSProfiles();
+
     function displayResponse(response) {
         // Create a container for the response
         const container = document.createElement('div');
@@ -152,130 +220,60 @@ document.addEventListener('DOMContentLoaded', function() {
     // Create QoS Session
     document.getElementById('createSessionForm').addEventListener('submit', async function(e) {
         e.preventDefault();
-        
-        // Build the device object
-        const device = {};
-        const phoneNumber = document.getElementById('phone_number').value;
-        const networkAccessId = document.getElementById('network_access_identifier').value;
-        const deviceIpv4 = document.getElementById('device_ipv4_address').value;
-        const deviceIpv4Port = document.getElementById('device_ipv4_port').value;
-        const deviceIpv6 = document.getElementById('device_ipv6_address').value;
-
-        if (phoneNumber) {
-            device.phoneNumber = phoneNumber;
-        }
-        if (networkAccessId) {
-            device.networkAccessIdentifier = networkAccessId;
-        }
-        if (deviceIpv4) {
-            device.ipv4Address = {
-                publicAddress: deviceIpv4
-            };
-            if (deviceIpv4Port) {
-                device.ipv4Address.publicPort = parseInt(deviceIpv4Port);
-            }
-        }
-        if (deviceIpv6) {
-            device.ipv6Address = deviceIpv6;
-        }
-
-        // Build the application server object
-        const applicationServer = {};
-        const serverIpv4 = document.getElementById('server_ipv4_address').value;
-        const serverIpv6 = document.getElementById('server_ipv6_address').value;
-
-        if (serverIpv4 && isValidIpv4(serverIpv4)) {
-            applicationServer.ipv4Address = serverIpv4;
-        }
-        if (serverIpv6 && isValidIpv6(serverIpv6)) {
-            applicationServer.ipv6Address = serverIpv6;
-        }
-
-        // Build the request payload
-        const formData = {
-            duration: parseInt(document.getElementById('duration').value) || 86400,
-            device: device,
-            applicationServer: applicationServer,
-            qosProfile: document.getElementById('qos_profile').value
-        };
-
-        // Add device ports if specified
-        const devicePortRangeFrom = document.getElementById('device_port_range_from').value;
-        const devicePortRangeTo = document.getElementById('device_port_range_to').value;
-        const devicePorts = parsePorts(document.getElementById('device_ports').value);
-
-        if (devicePortRangeFrom && devicePortRangeTo || devicePorts.length > 0) {
-            formData.devicePorts = {};
-            if (devicePortRangeFrom && devicePortRangeTo) {
-                formData.devicePorts.ranges = [{
-                    from: parseInt(devicePortRangeFrom),
-                    to: parseInt(devicePortRangeTo)
-                }];
-            }
-            if (devicePorts.length > 0) {
-                formData.devicePorts.ports = devicePorts;
-            }
-        }
-
-        // Add application server ports if specified
-        const serverPortRangeFrom = document.getElementById('server_port_range_from').value;
-        const serverPortRangeTo = document.getElementById('server_port_range_to').value;
-        const serverPorts = parsePorts(document.getElementById('server_ports').value);
-
-        if (serverPortRangeFrom && serverPortRangeTo || serverPorts.length > 0) {
-            formData.applicationServerPorts = {};
-            if (serverPortRangeFrom && serverPortRangeTo) {
-                formData.applicationServerPorts.ranges = [{
-                    from: parseInt(serverPortRangeFrom),
-                    to: parseInt(serverPortRangeTo)
-                }];
-            }
-            if (serverPorts.length > 0) {
-                formData.applicationServerPorts.ports = serverPorts;
-            }
-        }
-
-        // Add webhook information if provided
-        const notificationUrl = document.getElementById('notification_url').value;
-        const notificationAuthToken = document.getElementById('notification_auth_token').value;
-        
-        if (notificationUrl) {
-            formData.webhook = {
-                notificationUrl: notificationUrl
-            };
-            if (notificationAuthToken && notificationAuthToken.length >= 20) {
-                formData.webhook.notificationAuthToken = notificationAuthToken;
-            }
-        }
-
         try {
-            // Validate required fields
-            if (!formData.device || Object.keys(formData.device).length === 0) {
-                throw new Error('At least one device identifier is required');
+            const formData = {
+                duration: parseInt(document.getElementById('duration').value),
+                device: {
+                    ipv4Address: {
+                        publicAddress: document.getElementById('device_ip').value
+                    }
+                },
+                applicationServer: {
+                    ipv4Address: document.getElementById('server_ip').value || "172.20.120.84"
+                },
+                devicePorts: {
+                    ports: [50984]  // Always use this port
+                },
+                applicationServerPorts: {
+                    ports: [10000]  // Always use this port
+                },
+                qosProfile: document.getElementById('qos_profile').value
+            };
+
+            // Add webhook if provided
+            const webhookUrl = document.getElementById('webhook_url').value;
+            const webhookToken = document.getElementById('webhook_token').value;
+            if (webhookUrl) {
+                formData.webhook = {
+                    notificationUrl: webhookUrl
+                };
+                if (webhookToken) {
+                    formData.webhook.notificationAuthToken = webhookToken;
+                }
             }
-            if (!formData.applicationServer || Object.keys(formData.applicationServer).length === 0) {
-                throw new Error('At least one application server address is required');
-            }
-            if (!formData.qosProfile) {
-                throw new Error('QoS Profile is required');
-            }
+
+            console.log('Sending request with data:', formData);
 
             const response = await fetch('/qos/request', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(formData)
             });
-
+            
             const data = await response.json();
+            displayResponse(data);
+            
             if (response.ok) {
-                displayResponse(data);
+                alert('QoS session created successfully!');
             } else {
-                handleError(new Error(data.message || 'Failed to create session'));
+                alert('Error creating QoS session: ' + (data.detail?.message || JSON.stringify(data)));
             }
         } catch (error) {
+            console.error('Error:', error);
             handleError(error);
+            alert('Error creating QoS session: ' + error.message);
         }
     });
 
