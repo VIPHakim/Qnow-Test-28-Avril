@@ -30,55 +30,6 @@
         </div>
         {% endif %}
         
-        <!-- QoS Profiles Dropdown Section -->
-        <h2>Available QoS Profiles</h2>
-        <select id="qosProfilesDropdown">
-          <option>Loading...</option>
-        </select>
-
-        <script>
-        async function loadQosProfiles() {
-          const response = await fetch('/qos/profiles');
-          const data = await response.json();
-          const dropdown = document.getElementById('qosProfilesDropdown');
-          dropdown.innerHTML = '';
-          if (data.profiles && Array.isArray(data.profiles)) {
-            data.profiles.forEach(profile => {
-              const option = document.createElement('option');
-              option.value = profile.name;
-              option.text = profile.name + (profile.description ? ' - ' + profile.description : '');
-              dropdown.appendChild(option);
-            });
-          } else {
-            dropdown.innerHTML = '<option>No profiles found</option>';
-          }
-        }
-
-        async function checkTokenStatus() {
-          const box = document.getElementById('tokenStatusBox');
-          try {
-            const response = await fetch('/token/status');
-            const data = await response.json();
-            if (data.status === "granted") {
-              box.className = "alert alert-success mb-4";
-              box.textContent = data.message;
-            } else {
-              box.className = "alert alert-danger mb-4";
-              box.textContent = "Token error: " + data.message;
-            }
-          } catch (e) {
-            box.className = "alert alert-danger mb-4";
-            box.textContent = "Could not check token status.";
-          }
-        }
-
-        window.onload = function() {
-          loadQosProfiles();
-          checkTokenStatus();
-        };
-        </script>
-        <!-- End QoS Profiles Dropdown Section -->
-
         <!-- Create QoS Session -->
         <div class="card mb-4">
             <div class="card-header">
@@ -322,6 +273,53 @@
             alert('Error creating QoS session: ' + error.message);
         }
     });
+
+    async function loadQosProfiles() {
+        try {
+            const response = await fetch('/qos/profiles');
+            const data = await response.json();
+            const dropdown = document.getElementById('qos_profile');
+            dropdown.innerHTML = '';
+            
+            if (data.profiles && Array.isArray(data.profiles)) {
+                data.profiles.forEach(profile => {
+                    const option = document.createElement('option');
+                    option.value = profile.name;
+                    option.text = profile.name + (profile.description ? ' - ' + profile.description : '');
+                    dropdown.appendChild(option);
+                });
+            } else {
+                dropdown.innerHTML = '<option value="">No profiles available</option>';
+                console.error('Invalid profiles data:', data);
+            }
+        } catch (error) {
+            console.error('Error loading profiles:', error);
+            document.getElementById('qos_profile').innerHTML = '<option value="">Error loading profiles</option>';
+        }
+    }
+
+    async function checkTokenStatus() {
+      const box = document.getElementById('tokenStatusBox');
+      try {
+        const response = await fetch('/token/status');
+        const data = await response.json();
+        if (data.status === "granted") {
+          box.className = "alert alert-success mb-4";
+          box.textContent = data.message;
+        } else {
+          box.className = "alert alert-danger mb-4";
+          box.textContent = "Token error: " + data.message;
+        }
+      } catch (e) {
+        box.className = "alert alert-danger mb-4";
+        box.textContent = "Could not check token status.";
+      }
+    }
+
+    window.onload = function() {
+        loadQosProfiles();
+        checkTokenStatus();
+    };
     </script>
 </body>
 </html> 
