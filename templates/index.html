@@ -134,10 +134,10 @@
                             <input type="radio" id="customProfile" name="profileType" value="custom">
                             <label for="customProfile">Use Custom Profile</label>
                         </div>
-                        <select id="predefinedProfileSelect" style="display: none;">
+                        <select id="predefinedProfileSelect" class="form-control mt-2">
                             <option value="">Loading profiles...</option>
                         </select>
-                        <input type="text" id="customProfileInput" style="display: none;" placeholder="Enter custom profile">
+                        <input type="text" id="customProfileInput" class="form-control mt-2" style="display: none;" placeholder="Enter custom profile">
                     </div>
 
                     <!-- Device Information -->
@@ -440,6 +440,7 @@
 
     // Initialize when the page loads
     window.onload = function() {
+        // Load profiles when page loads
         loadQosProfiles();
         checkTokenStatus();
         
@@ -447,9 +448,6 @@
         document.getElementById('device_ipv4_public_address').value = '172.20.120.107';
         document.getElementById('device_ipv4_private_address').value = '172.20.120.107';
         document.getElementById('server_ipv4_address').value = '172.20.120.84';
-        
-        // Show the profile dropdown immediately
-        document.getElementById('predefinedProfileSelect').style.display = 'block';
     };
 
     async function checkTokenStatus() {
