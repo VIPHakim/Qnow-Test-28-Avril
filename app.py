@@ -268,53 +268,13 @@ async def create_qos_session(request: QoSSessionRequest):
     try:
         print("\n=== Processing QoS Session Request ===")
         print(f"Input Request: {request.model_dump_json()}")
+        print(f"Requested QoS Profile: {request.qosProfile}")
 
-        # First, get available QoS profiles
-        profiles_response, profiles_status = await make_api_request("GET", "/qos-profiles")
-        if profiles_status != 200:
-            raise HTTPException(status_code=400, detail="Failed to fetch QoS profiles")
-
-        if not isinstance(profiles_response, list):
-            print(f"Unexpected profiles response: {profiles_response}")
-            raise HTTPException(status_code=500, detail="Invalid profiles response from API")
-
-        # Create a mapping of profile names to their data
-        profile_map = {}
-        for profile in profiles_response:
-            if isinstance(profile, dict):
-                name = profile.get("name", "").lower()
-                if name:
-                    profile_map[name] = profile
-
-        print(f"\nAvailable profiles: {list(profile_map.keys())}")
-
-        # Convert requested profile to lowercase for case-insensitive matching
-        requested_profile = request.qosProfile.lower()
-
-        # Check if the profile exists
-        if requested_profile not in profile_map:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Invalid QoS Profile",
-                    "message": f"Profile '{request.qosProfile}' not found",
-                    "available_profiles": list(profile_map.keys())
-                }
-            )
-
-        # Get the profile data and ensure we have an ID
-        profile_data = profile_map[requested_profile]
-        profile_id = profile_data.get("id")
+        # Directly use the requested profile ID
+        # This assumes the frontend is sending the correct profile ID directly
+        profile_id = request.qosProfile
         
-        if not profile_id:
-            print(f"Profile data missing ID: {profile_data}")
-            raise HTTPException(
-                status_code=500,
-                detail="Selected profile is missing an ID"
-            )
-
-        print(f"\nMatched QoS Profile: {request.qosProfile} -> ID: {profile_id}")
-        print(f"Full profile data: {json.dumps(profile_data, indent=2)}")
+        print(f"\nUsing QoS Profile ID: {profile_id}")
 
         # Format the request EXACTLY as in the Orange example
         formatted_request = {
@@ -565,21 +525,33 @@ async def test_qos_profiles():
     print("Returning sample QoS profiles for testing")
     sample_profiles = [
         {
-            "id": "profile-low-001",
+            "id": "low",
             "name": "Low",
             "description": "Low priority QoS profile",
             "status": "ACTIVE"
         },
         {
-            "id": "profile-medium-002",
+            "id": "medium",
             "name": "Medium",
             "description": "Medium priority QoS profile",
             "status": "ACTIVE"
         },
         {
-            "id": "profile-high-003",
+            "id": "high",
             "name": "High",
             "description": "High priority QoS profile",
+            "status": "ACTIVE"
+        },
+        {
+            "id": "verylow",
+            "name": "Very Low",
+            "description": "Very low priority QoS profile",
+            "status": "ACTIVE"
+        },
+        {
+            "id": "profile-10m",
+            "name": "Profile 10M",
+            "description": "10Mbps profile",
             "status": "ACTIVE"
         }
     ]

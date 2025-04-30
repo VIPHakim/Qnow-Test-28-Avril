@@ -343,23 +343,23 @@
                     return;
                 }
                 
-                // Add profile options
+                // Add profile options - IMPORTANT: use profile.id as the value
                 data.forEach((profile, index) => {
                     console.log(`Processing profile ${index}:`, profile);
-                    if (profile && profile.name && profile.id) {
-                        console.log(`Creating option for profile: ${profile.name} (${profile.id})`);
+                    const profileId = profile.id || profile.name;
+                    const profileName = profile.name || profile.id;
+                    
+                    if (profileId) {
+                        console.log(`Creating option for profile: ${profileName} (${profileId})`);
                         const option = document.createElement('option');
-                        option.value = profile.id;
-                        option.text = profile.name;
+                        option.value = profileId; // Use ID as the value
+                        option.text = profileName;
                         dropdown.appendChild(option);
                         
-                        window.profilesData[profile.name] = profile;
+                        window.profilesData[profileId] = profile;
                     } else {
                         console.warn(`Invalid profile data at index ${index}:`, profile);
-                        console.warn('Required fields:', 
-                            'name -', profile?.name ? 'Present' : 'Missing',
-                            'id -', profile?.id ? 'Present' : 'Missing'
-                        );
+                        console.warn('Required field id or name is missing');
                     }
                 });
                 
@@ -502,10 +502,17 @@
                 // Add profile options
                 data.forEach((profile, index) => {
                     console.log(`Adding test profile ${index}:`, profile);
+                    const profileId = profile.id || profile.name;
+                    const profileName = profile.name || profile.id;
+                    
                     const option = document.createElement('option');
-                    option.value = profile.id;
-                    option.text = profile.name;
+                    option.value = profileId;  // Use ID as value
+                    option.text = profileName;
                     dropdown.appendChild(option);
+                    
+                    // Store for reference
+                    if (!window.profilesData) window.profilesData = {};
+                    window.profilesData[profileId] = profile;
                 });
                 
                 console.log('Test profiles loaded successfully!');
