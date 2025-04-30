@@ -5,17 +5,18 @@ from fastapi.responses import HTMLResponse, JSONResponse
 import os
 from dotenv import load_dotenv
 import aiohttp
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, HttpUrl, Field, IPvAnyAddress, constr, validator
 from enum import Enum
-import uuid
 import time
 import base64
 import json
 import re
 import hashlib
 import logging
-import httpx
+import traceback
+import uuid
+import ipaddress
 
 # Load environment variables
 load_dotenv()
@@ -247,7 +248,6 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
         raise HTTPException(status_code=500, detail=f"API Client Error: {str(e)}")
     except Exception as e:
         print(f"Unexpected Error: {str(e)}")
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Unexpected Error: {str(e)}")
 
@@ -360,7 +360,6 @@ async def create_qos_session(request: QoSSessionRequest):
         raise he
     except Exception as e:
         print(f"Error in create_qos_session: {str(e)}")
-        import traceback
         traceback.print_exc()
         error_data = request.model_dump() if hasattr(request, 'model_dump') else request.dict()
         raise HTTPException(
@@ -404,7 +403,7 @@ async def get_qos_profiles():
             "X-OAPI-Request-Id": str(uuid.uuid4())
         }
         
-        async with httpx.AsyncClient() as client:
+        async with aiohttp.AsyncClient() as client:
             logging.info(f"Making request to {API_BASE_URL}/qos/profiles")
             response = await client.get(
                 f"{API_BASE_URL}/qos/profiles",
@@ -463,7 +462,7 @@ async def get_qos_profiles():
                 "profiles": profiles
             }
             
-    except httpx.RequestError as e:
+    except aiohttp.ClientError as e:
         logging.error(f"Network error while fetching QoS profiles: {e}")
         return JSONResponse(
             status_code=500,
