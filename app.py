@@ -251,28 +251,16 @@ async def make_api_request(method: str, endpoint: str, data: dict = None):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Unexpected Error: {str(e)}")
 
-@app.get("/")
-async def root(request: Request):
-    try:
-        qos_profiles = await get_qos_profiles()
-        return templates.TemplateResponse(
-            "index.html",
-            {
-                "request": request,
-                "qos_profiles": qos_profiles,
-                "error": None
-            }
-        )
-    except Exception as e:
-        logging.error(f"Error fetching QoS profiles: {str(e)}")
-        return templates.TemplateResponse(
-            "index.html",
-            {
-                "request": request,
-                "qos_profiles": [],
-                "error": str(e)
-            }
-        )
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    """Render the home page"""
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "api_token_configured": bool(API_BASE_URL)
+        }
+    )
 
 @app.post("/qos/request")
 async def create_qos_session(request: QoSSessionRequest):
@@ -397,20 +385,96 @@ async def delete_session(session_id: str):
 
 @app.get("/qos/profiles")
 async def get_qos_profiles():
+    """Get available QoS profiles"""
     try:
-        async with aiohttp.ClientSession() as session:
-            response = await make_api_request(
-                session,
-                "GET",
-                "/qos/profiles",
-                None
+        logging.info("Fetching QoS profiles from Orange API")
+        
+        # Get a fresh token
+        token = await get_access_token()
+        if not token:
+            logging.error("Failed to obtain token for QoS profiles request")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Failed to obtain authentication token"}
             )
-            if response.get("profiles"):
-                return response["profiles"]
-            return []
+            
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "X-OAPI-Request-Id": str(uuid.uuid4())
+        }
+        
+        async with aiohttp.AsyncClient() as client:
+            logging.info(f"Making request to {API_BASE_URL}/qos/profiles")
+            response = await client.get(
+                f"{API_BASE_URL}/qos/profiles",
+                headers=headers
+            )
+            
+            logging.info(f"QoS profiles response status: {response.status_code}")
+            logging.info(f"QoS profiles response headers: {response.headers}")
+            
+            try:
+                response_data = response.json()
+                logging.info(f"QoS profiles response data: {response_data}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse QoS profiles response: {e}")
+                logging.error(f"Raw response content: {response.text}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": "Invalid JSON response from Orange API"}
+                )
+            
+            if response.status_code != 200:
+                error_message = response_data.get('error', 'Unknown error')
+                logging.error(f"Error from Orange API: {error_message}")
+                return JSONResponse(
+                    status_code=response.status_code,
+                    content={"error": error_message}
+                )
+                
+            # Validate response structure
+            if not isinstance(response_data, list):
+                logging.error(f"Unexpected response format. Expected list, got: {type(response_data)}")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": 200,
+                        "profiles": [],
+                        "error": "Invalid response format from Orange API"
+                    }
+                )
+            
+            # Transform response to expected format
+            profiles = []
+            for profile in response_data:
+                if isinstance(profile, dict) and 'id' in profile and 'name' in profile:
+                    profiles.append({
+                        'id': profile['id'],
+                        'name': profile['name'],
+                        'parameters': profile.get('parameters', {})
+                    })
+                else:
+                    logging.warning(f"Skipping invalid profile data: {profile}")
+            
+            logging.info(f"Successfully processed {len(profiles)} QoS profiles")
+            return {
+                "status": 200,
+                "profiles": profiles
+            }
+            
+    except aiohttp.ClientError as e:
+        logging.error(f"Network error while fetching QoS profiles: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Network error: {str(e)}"}
+        )
     except Exception as e:
-        logging.error(f"Failed to fetch QoS profiles: {str(e)}")
-        raise
+        logging.error(f"Unexpected error in get_qos_profiles: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Internal server error: {str(e)}"}
+        )
 
 @app.get("/token/status")
 async def token_status():
