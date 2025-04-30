@@ -137,6 +137,7 @@
                         <select id="predefinedProfileSelect" class="form-control mt-2">
                             <option value="">Loading profiles...</option>
                         </select>
+                        <button type="button" id="loadTestProfiles" class="btn btn-sm btn-outline-secondary mt-2">Load Test Profiles</button>
                         <input type="text" id="customProfileInput" class="form-control mt-2" style="display: none;" placeholder="Enter custom profile">
                     </div>
 
@@ -299,25 +300,33 @@
 
     async function loadQosProfiles() {
         try {
-            console.log('Starting to load QoS profiles...');
+            console.log('========= STARTING TO LOAD QOS PROFILES =========');
+            console.log('Making fetch request to /qos/profiles');
             const response = await fetch('/qos/profiles');
-            console.log('Raw response:', response);
+            console.log('Fetch response status:', response.status);
+            console.log('Fetch response headers:', response.headers);
+            console.log('Full response object:', response);
             
+            console.log('Parsing response as JSON...');
             const data = await response.json();
-            console.log('Parsed profiles data:', data);
+            console.log('Parsed response data type:', typeof data);
+            console.log('Is array?', Array.isArray(data));
+            console.log('Data length:', Array.isArray(data) ? data.length : 'N/A');
+            console.log('Full parsed profiles data:', data);
             
             const dropdown = document.getElementById('predefinedProfileSelect');
+            console.log('Dropdown element:', dropdown);
             dropdown.innerHTML = '';
             
             if (!response.ok) {
                 console.error('Server returned error:', data);
-                dropdown.innerHTML = `<option value="">Error: ${data.error || 'Failed to load profiles'}</option>`;
+                dropdown.innerHTML = `<option value="">Error: ${JSON.stringify(data) || 'Failed to load profiles'}</option>`;
                 return;
             }
             
             // Data should now be an array directly
             if (Array.isArray(data)) {
-                console.log('Processing profiles array:', data);
+                console.log('Processing profiles array, found', data.length, 'profiles');
                 
                 // Add default option
                 const defaultOption = document.createElement('option');
@@ -338,6 +347,7 @@
                 data.forEach((profile, index) => {
                     console.log(`Processing profile ${index}:`, profile);
                     if (profile && profile.name && profile.id) {
+                        console.log(`Creating option for profile: ${profile.name} (${profile.id})`);
                         const option = document.createElement('option');
                         option.value = profile.id;
                         option.text = profile.name;
@@ -345,18 +355,25 @@
                         
                         window.profilesData[profile.name] = profile;
                     } else {
-                        console.warn('Invalid profile data:', profile);
+                        console.warn(`Invalid profile data at index ${index}:`, profile);
+                        console.warn('Required fields:', 
+                            'name -', profile?.name ? 'Present' : 'Missing',
+                            'id -', profile?.id ? 'Present' : 'Missing'
+                        );
                     }
                 });
                 
+                console.log('Final dropdown options:', dropdown.innerHTML);
                 console.log('Final profiles data:', window.profilesData);
                 
             } else {
-                console.error('Invalid response format:', data);
+                console.error('Invalid response format, expected array but got:', typeof data);
+                console.error('Response data:', data);
                 dropdown.innerHTML = '<option value="">Error: Invalid response format</option>';
             }
         } catch (error) {
             console.error('Error in loadQosProfiles:', error);
+            console.error('Error stack:', error.stack);
             const dropdown = document.getElementById('predefinedProfileSelect');
             dropdown.innerHTML = `<option value="">Error: ${error.message}</option>`;
         }
@@ -463,6 +480,40 @@
         
         // Trigger the predefined profile radio button to show correct UI elements
         document.getElementById('predefinedProfile').click();
+        
+        // Set up test profiles button
+        document.getElementById('loadTestProfiles').addEventListener('click', async function() {
+            try {
+                console.log('Loading test profiles...');
+                const response = await fetch('/test/qos/profiles');
+                const data = await response.json();
+                
+                console.log('Test profiles data:', data);
+                
+                const dropdown = document.getElementById('predefinedProfileSelect');
+                dropdown.innerHTML = '';
+                
+                // Add default option
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.text = 'Select a profile';
+                dropdown.appendChild(defaultOption);
+                
+                // Add profile options
+                data.forEach((profile, index) => {
+                    console.log(`Adding test profile ${index}:`, profile);
+                    const option = document.createElement('option');
+                    option.value = profile.id;
+                    option.text = profile.name;
+                    dropdown.appendChild(option);
+                });
+                
+                console.log('Test profiles loaded successfully!');
+            } catch (error) {
+                console.error('Error loading test profiles:', error);
+                alert('Error loading test profiles: ' + error.message);
+            }
+        });
     };
 
     async function checkTokenStatus() {

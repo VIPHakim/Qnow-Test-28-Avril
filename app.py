@@ -387,12 +387,13 @@ async def delete_session(session_id: str):
 async def get_qos_profiles():
     """Get available QoS profiles from Orange CAMARA QoD API"""
     try:
-        logging.info("Fetching QoS profiles from Orange API")
+        print("\n===== FETCHING QOS PROFILES =====")
+        print(f"API_BASE_URL: {API_BASE_URL}")
         
         # Get a fresh token
         token = await get_access_token()
         if not token:
-            logging.error("Failed to obtain token for QoS profiles request")
+            print("ERROR: Failed to obtain token for QoS profiles request")
             return JSONResponse(
                 status_code=401,
                 content={
@@ -401,6 +402,8 @@ async def get_qos_profiles():
                     "message": "Authorization failed: Failed to obtain authentication token"
                 }
             )
+        
+        print(f"Token obtained successfully: {token[:10]}...")
             
         headers = {
             "Authorization": f"Bearer {token}",
@@ -408,92 +411,126 @@ async def get_qos_profiles():
             "Cache-Control": "no-cache"
         }
         
+        print(f"Request headers: {headers}")
+        
         async with aiohttp.ClientSession() as client:
             url = f"{API_BASE_URL}/qos-profiles"
-            logging.info(f"Making request to {url}")
+            print(f"Making request to URL: {url}")
             
-            async with client.get(url, headers=headers) as response:
-                logging.info(f"QoS profiles response status: {response.status}")
-                logging.info(f"QoS profiles response headers: {response.headers}")
-                
-                try:
-                    response_data = await response.json()
-                    logging.info(f"QoS profiles response data: {response_data}")
+            try:
+                async with client.get(url, headers=headers) as response:
+                    print(f"QoS profiles response status: {response.status}")
+                    print(f"QoS profiles response headers: {dict(response.headers)}")
                     
-                    if response.status == 200:
-                        # Validate and transform response to match Orange API format
-                        if isinstance(response_data, list):
-                            profiles = []
-                            for profile in response_data:
-                                if isinstance(profile, dict):
-                                    profile_data = {
-                                        "name": profile.get("name"),
-                                        "description": profile.get("description"),
-                                        "status": profile.get("status", "ACTIVE"),
-                                        "id": profile.get("id")
-                                    }
-                                    # Only add optional fields if they exist
-                                    if "parameters" in profile:
-                                        profile_data["parameters"] = profile["parameters"]
-                                    profiles.append(profile_data)
+                    try:
+                        response_text = await response.text()
+                        print(f"Raw response text: {response_text}")
+                        
+                        try:
+                            response_data = json.loads(response_text)
+                            print(f"Parsed response data type: {type(response_data)}")
+                            print(f"QoS profiles response data: {json.dumps(response_data, indent=2)}")
                             
-                            # Return profiles directly as a list rather than wrapped in an object
-                            return profiles
-                        else:
-                            logging.error("Invalid response format from Orange API")
+                            if response.status == 200:
+                                # Validate and transform response to match Orange API format
+                                if isinstance(response_data, list):
+                                    print(f"Found {len(response_data)} profiles in array")
+                                    profiles = []
+                                    for i, profile in enumerate(response_data):
+                                        print(f"Processing profile {i}: {profile}")
+                                        if isinstance(profile, dict):
+                                            profile_data = {
+                                                "name": profile.get("name"),
+                                                "description": profile.get("description"),
+                                                "status": profile.get("status", "ACTIVE"),
+                                                "id": profile.get("id")
+                                            }
+                                            # Only add optional fields if they exist
+                                            if "parameters" in profile:
+                                                profile_data["parameters"] = profile["parameters"]
+                                            profiles.append(profile_data)
+                                    
+                                    print(f"Returning {len(profiles)} processed profiles")
+                                    print(f"Final profiles data: {json.dumps(profiles, indent=2)}")
+                                    # Return profiles directly as a list rather than wrapped in an object
+                                    return profiles
+                                else:
+                                    print(f"Error: Response is not a list but {type(response_data)}")
+                                    return JSONResponse(
+                                        status_code=500,
+                                        content={
+                                            "code": "INTERNAL",
+                                            "status": 500,
+                                            "message": "Invalid response format from Orange API"
+                                        }
+                                    )
+                            
+                            elif response.status == 401:
+                                print("Error 401: Authorization failed")
+                                return JSONResponse(
+                                    status_code=401,
+                                    content={
+                                        "code": "UNAUTHENTICATED",
+                                        "status": 401,
+                                        "message": "Authorization failed"
+                                    }
+                                )
+                            elif response.status == 403:
+                                print("Error 403: Permission denied")
+                                return JSONResponse(
+                                    status_code=403,
+                                    content={
+                                        "code": "PERMISSION_DENIED",
+                                        "status": 403,
+                                        "message": "Operation not allowed"
+                                    }
+                                )
+                            else:
+                                error_message = response_data.get("message", "Unknown error")
+                                print(f"Error {response.status}: {error_message}")
+                                return JSONResponse(
+                                    status_code=response.status,
+                                    content={
+                                        "code": "INTERNAL",
+                                        "status": response.status,
+                                        "message": error_message
+                                    }
+                                )
+                                
+                        except json.JSONDecodeError as e:
+                            print(f"JSON Decode Error: {str(e)}")
+                            print(f"Raw response content: {response_text}")
                             return JSONResponse(
                                 status_code=500,
                                 content={
                                     "code": "INTERNAL",
                                     "status": 500,
-                                    "message": "Invalid response format from Orange API"
+                                    "message": f"Invalid JSON response from Orange API: {str(e)}"
                                 }
                             )
-                    
-                    elif response.status == 401:
+                    except Exception as e:
+                        print(f"Error reading response: {str(e)}")
                         return JSONResponse(
-                            status_code=401,
-                            content={
-                                "code": "UNAUTHENTICATED",
-                                "status": 401,
-                                "message": "Authorization failed"
-                            }
-                        )
-                    elif response.status == 403:
-                        return JSONResponse(
-                            status_code=403,
-                            content={
-                                "code": "PERMISSION_DENIED",
-                                "status": 403,
-                                "message": "Operation not allowed"
-                            }
-                        )
-                    else:
-                        error_message = response_data.get("message", "Unknown error")
-                        return JSONResponse(
-                            status_code=response.status,
+                            status_code=500,
                             content={
                                 "code": "INTERNAL",
-                                "status": response.status,
-                                "message": error_message
+                                "status": 500,
+                                "message": f"Error reading response: {str(e)}"
                             }
                         )
-                        
-                except json.JSONDecodeError as e:
-                    logging.error(f"Failed to parse QoS profiles response: {e}")
-                    response_text = await response.text()
-                    logging.error(f"Raw response content: {response_text}")
-                    return JSONResponse(
-                        status_code=500,
-                        content={
-                            "code": "INTERNAL",
-                            "status": 500,
-                            "message": "Invalid JSON response from Orange API"
-                        }
-                    )
+            except aiohttp.ClientError as e:
+                print(f"HTTP request error: {str(e)}")
+                return JSONResponse(
+                    status_code=500,
+                    content={
+                        "code": "INTERNAL",
+                        "status": 500,
+                        "message": f"HTTP request error: {str(e)}"
+                    }
+                )
                 
     except aiohttp.ClientError as e:
-        logging.error(f"Network error while fetching QoS profiles: {e}")
+        print(f"Network error while fetching QoS profiles: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={
@@ -503,7 +540,8 @@ async def get_qos_profiles():
             }
         )
     except Exception as e:
-        logging.error(f"Unexpected error in get_qos_profiles: {e}", exc_info=True)
+        print(f"Unexpected error in get_qos_profiles: {str(e)}")
+        traceback.print_exc()
         return JSONResponse(
             status_code=500,
             content={
@@ -520,6 +558,32 @@ async def token_status():
         return {"status": "granted", "message": "Access token is valid and granted."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.get("/test/qos/profiles")
+async def test_qos_profiles():
+    """Test endpoint that returns sample QoS profiles"""
+    print("Returning sample QoS profiles for testing")
+    sample_profiles = [
+        {
+            "id": "profile-low-001",
+            "name": "Low",
+            "description": "Low priority QoS profile",
+            "status": "ACTIVE"
+        },
+        {
+            "id": "profile-medium-002",
+            "name": "Medium",
+            "description": "Medium priority QoS profile",
+            "status": "ACTIVE"
+        },
+        {
+            "id": "profile-high-003",
+            "name": "High",
+            "description": "High priority QoS profile",
+            "status": "ACTIVE"
+        }
+    ]
+    return sample_profiles
 
 if __name__ == "__main__":
     import uvicorn
