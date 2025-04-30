@@ -75,7 +75,7 @@ class PortRange(BaseModel):
     to: int = Field(..., ge=0, le=65535)
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 class PortsSpec(BaseModel):
     """Port specification including ranges and individual ports"""
@@ -83,7 +83,7 @@ class PortsSpec(BaseModel):
     ports: Optional[List[int]] = Field(None, min_items=1)
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "ranges": [{"from": 5010, "to": 5020}],
                 "ports": [5060, 5070]
