@@ -437,10 +437,8 @@ async def get_qos_profiles():
                                         profile_data["parameters"] = profile["parameters"]
                                     profiles.append(profile_data)
                             
-                            return {
-                                "status": 200,
-                                "profiles": profiles
-                            }
+                            # Return profiles directly as a list rather than wrapped in an object
+                            return profiles
                         else:
                             logging.error("Invalid response format from Orange API")
                             return JSONResponse(
